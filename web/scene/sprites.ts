@@ -453,6 +453,7 @@ const ACC: Record<Exclude<Accessory, "none">, Record<"down" | "up" | "side", str
 
 // Torso rows y=11..17. Brand outfits are recoloured, logos placed by symbol.
 const TORSO: Record<AgentKind, Record<"down" | "up" | "side", string[]>> = {
+  omp: { down: ["....oppSSppo....","....oopppooo....","....ooooolol....","....oooooolo....","....ooooolol....","....oOOOOOOo....","....OOOOOOOO...."], up: ["....oppppppo....","....oppppppo....","....oOppppOo....","....ooOOOOoo....","....oooooooo....","....oooooooo....","....OOOOOOOO...."], side: ["....opSSpo......","....ooppoo......","....oooool......","....oooooo......","....oooool......","....oOOOOo......","....OOOOOO......"] },
   claude: {
     down: [
       "....oppSSppo....",

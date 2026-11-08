@@ -31,6 +31,7 @@ export function hexColor(h: string): (s: string) => string {
 
 /** Terminal stand-ins for the logos. */
 export const GLYPH: Record<AgentKind, string> = {
+  omp: "O",
   claude: "✻",
   commandcode: "⌘",
   codex: "⬡",

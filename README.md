@@ -59,6 +59,10 @@ Written in TypeScript by [@bas3line](https://github.com/bas3line). `npx theagent
   <img src="docs/logos/boat.svg" width="26" alt="boat">
 </p>
 
+## Teck OMP / Docker Sandboxes
+
+This fork adds authenticated push-based observation for OMP, including native helper relationships and Docker Sandboxes pods. Orca can manage a local browser/server and sandbox reverse tunnels. See [external observer integration](docs/EXTERNAL-EVENTS.md). Agent launching remains disabled in this integration.
+
 ## Why
 
 I run Claude Code, Command Code and Codex side by side most days, some of them in sandboxes. A wall of terminals doesn't tell you who's stuck, who's waiting on you and who just broke the tests. I wanted to see all of it at a glance, and I wanted it to be fun enough to leave open on a second screen. So I gave my agents an office.

@@ -19,6 +19,7 @@
  * unlocked /events clients get its control, control_gone and control_info
  * frames.
  */
+import { createExternalIngest } from "./external.ts";
 import { createHmac } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { hostname, networkInterfaces } from "node:os";
@@ -66,6 +67,8 @@ export const SECURITY_HEADERS: Record<string, string> = {
 
 export interface ServerOptions {
   state: OfficeState;
+  /** Explicit producer credentials and server-owned sandbox identities. */
+  externalConfig?: string;
   host?: string;
   port?: number;
   /** Ports to try after `port` when it is taken. Default 20. */
@@ -95,6 +98,8 @@ export interface OfficeServer {
 export async function startServer(opts: ServerOptions): Promise<OfficeServer> {
   const state = opts.state;
   const host = opts.host ?? DEFAULT_HOST;
+  if (opts.externalConfig && !isLoopback(host)) throw Error("External ingestion requires a loopback listener");
+  const external = opts.externalConfig ? createExternalIngest(opts.externalConfig, state) : undefined;
   const webRoot = resolve(opts.webRoot ?? defaultWebRoot());
   const assetsRoot = resolve(webRoot, "assets");
   const clients = new Set<ServerResponse>();
@@ -155,6 +160,7 @@ export async function startServer(opts: ServerOptions): Promise<OfficeServer> {
     const q = raw.indexOf("?");
     const path = q === -1 ? raw : raw.slice(0, q);
     if (control?.handle(req, res, path)) return;
+    if (path === "/api/ingest" && external) { void external.handle(req, res).catch(() => { if (!res.headersSent) text(res, 500, "Ingestion unavailable"); else res.end(); }); return; }
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.setHeader("Allow", "GET, HEAD");
       return text(res, 405, "Method not allowed");
@@ -187,6 +193,8 @@ export async function startServer(opts: ServerOptions): Promise<OfficeServer> {
         : undefined;
       return json(res, 200, {
         ok: true,
+        external: !!external,
+        buildId: process.env.AGENT_OFFICE_BUILD_ID,
         demo: state.demo,
         startedAt: state.startedAt,
         uptimeSec: Math.round(process.uptime()),
@@ -255,6 +263,7 @@ export async function startServer(opts: ServerOptions): Promise<OfficeServer> {
       closing ??= new Promise<void>((done) => {
         clearInterval(ping);
         unsubscribe();
+        external?.close();
         frames?.dispose();
         for (const res of clients) res.end();
         clients.clear();

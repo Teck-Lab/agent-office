@@ -63,6 +63,7 @@ export function agentRoots(agent: AgentKind, env: SourceEnv, local = true): stri
   const home = env.home;
   const o = (name: string) => (local ? v[`AGENT_OFFICE_${name}_DIR`] : undefined);
   switch (agent) {
+    case "omp": return []; // Native extension pushes events; no transcript guessing.
     case "claude": {
       const x = o("CLAUDE");
       return [under(x || v.CLAUDE_CONFIG_DIR || join2(home, ".claude"), "projects", !!x, local)];

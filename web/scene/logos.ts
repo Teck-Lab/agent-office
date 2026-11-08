@@ -9,6 +9,8 @@
  * which are drawn by hand at those sizes; smoothLogo() keeps the
  * antialiasing for the screen-resolution label pass.
  */
+import ompSvg from "../../assets/logos/omp.svg";
+import dockerSandboxSvg from "../../assets/logos/docker-sandbox.svg";
 import claudeSvg from "../../assets/logos/claude.svg";
 import commandcodeSvg from "../../assets/logos/commandcode.svg";
 import codexSvg from "../../assets/logos/codex.svg";
@@ -66,6 +68,7 @@ export type LogoKind = AgentKind | Exclude<HostKind, "local">;
 const SSH_GLYPH = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill-rule="evenodd"><path d="M3 3h18a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm1 4v12h16V7zm2 2.5 1.4-1.4 4.4 4.4-4.4 4.4L6 15.5l3-3zM12 15h6v2h-6z"/></svg>`;
 
 const SVGS: Record<LogoKind, string> = {
+  omp: ompSvg, "docker-sandbox": dockerSandboxSvg,
   claude: claudeSvg, commandcode: commandcodeSvg, codex: codexSvg, opencode: opencodeSvg, droid: droidSvg,
   gemini: geminiSvg, qwen: qwenSvg, cursor: cursorSvg,
   ssh: SSH_GLYPH, daytona: daytonaSvg, boat: boatSvg, railway: railwaySvg, vercel: vercelSvg,

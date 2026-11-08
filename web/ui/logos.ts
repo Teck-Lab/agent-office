@@ -4,6 +4,8 @@
  * `color`. This is the only innerHTML in the app, and it only ever sees our
  * own files. Plain ssh is not a company, so it gets a generic terminal glyph.
  */
+import ompSvg from "../../assets/logos/omp.svg";
+import dockerSandboxSvg from "../../assets/logos/docker-sandbox.svg";
 import claudeSvg from "../../assets/logos/claude.svg";
 import commandcodeSvg from "../../assets/logos/commandcode.svg";
 import codexSvg from "../../assets/logos/codex.svg";
@@ -33,6 +35,7 @@ function clean(src: string): string {
 }
 
 const SOURCES: Record<string, string> = {
+  omp: ompSvg, "host-docker-sandbox": dockerSandboxSvg,
   claude: claudeSvg, commandcode: commandcodeSvg, codex: codexSvg, opencode: opencodeSvg, droid: droidSvg,
   gemini: geminiSvg, qwen: qwenSvg, cursor: cursorSvg,
   "host-ssh": SSH_GLYPH, "host-daytona": daytonaSvg, "host-boat": boatSvg, "host-railway": railwaySvg, "host-vercel": vercelSvg,

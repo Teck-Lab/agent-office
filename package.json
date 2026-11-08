@@ -1,6 +1,6 @@
 {
   "name": "theagentoffice",
-  "version": "0.3.0",
+  "version": "0.3.0-teck.1",
   "description": "A live pixel-art office for your coding agents. Claude Code, Codex, Command Code, opencode, Cursor, Droid, Qwen Code and Gemini CLI sessions, local or in Daytona, Railway, Vercel and boat sandboxes, become little workers at desks.",
   "type": "module",
   "bin": {
@@ -47,11 +47,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bas3line/agent-office.git"
+    "url": "git+https://github.com/Teck-Lab/agent-office.git"
   },
   "author": "bas3line (https://github.com/bas3line)",
-  "homepage": "https://github.com/bas3line/agent-office#readme",
-  "bugs": "https://github.com/bas3line/agent-office/issues",
+  "homepage": "https://github.com/Teck-Lab/agent-office#readme",
+  "bugs": "https://github.com/Teck-Lab/agent-office/issues",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^26.6.5",

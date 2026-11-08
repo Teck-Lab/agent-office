@@ -193,6 +193,7 @@ export interface Toolset {
 }
 
 export const TOOLSETS: Record<AgentKind, Toolset> = {
+  omp: { tools: { read: "read", edit: "edit", write: "write", bash: "bash", search: "grep", glob: "find", web: "web_search", agent: "task", todo: "todo" }, web: ["web_search"], todoSummary: "Update todos" },
   claude: {
     tools: {
       read: "Read", edit: "Edit", write: "Write", bash: "Bash", search: "Grep", glob: "Glob",
@@ -260,6 +261,7 @@ export const TOOLSETS: Record<AgentKind, Toolset> = {
 };
 
 export const MODELS: Record<AgentKind, string[]> = {
+  omp: ["teck-orchestrator", "teck-executor"],
   claude: ["claude-opus-5-5", "claude-sonnet-5-5"],
   commandcode: ["deepseek/deepseek-v4-pro", "moonshotai/Kimi-K3", "zai-org/GLM-5.2"],
   codex: ["gpt-5.6-sol", "gpt-5.5", "gpt-5.3-codex-spark"],
