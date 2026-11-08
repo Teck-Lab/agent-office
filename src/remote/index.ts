@@ -48,6 +48,7 @@ const READY_MAX_MS = 5_000;
 const CLOUD: CloudKind[] = ["daytona", "boat", "railway", "vercel"];
 
 export const LABEL: Record<HostKind, string> = {
+  "docker-sandbox": "Docker Sandboxes",
   local: "this machine",
   ssh: "ssh",
   daytona: "Daytona",

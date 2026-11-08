@@ -7,6 +7,7 @@
  */
 
 export type AgentKind =
+  | "omp"
   | "claude"
   | "commandcode"
   | "codex"
@@ -17,7 +18,7 @@ export type AgentKind =
   | "cursor"; // cursor-agent CLI
 
 /** Where a worker is running. Local sessions omit `host` on events. */
-export type HostKind = "local" | "ssh" | "daytona" | "boat" | "railway" | "vercel";
+export type HostKind = "docker-sandbox" | "local" | "ssh" | "daytona" | "boat" | "railway" | "vercel";
 
 export interface Host {
   kind: HostKind;
@@ -161,6 +162,7 @@ export const ACTIVE_WINDOW_MS = 30 * 60_000;
  */
 
 export const BRAND: Record<AgentKind, { name: string; color: string; ink: string }> = {
+  omp: { name: "OMP", color: "#38BDF8", ink: "#082F49" },
   claude: { name: "Claude Code", color: "#D97757", ink: "#1F1E1D" },
   commandcode: { name: "Command Code", color: "#F2F2F2", ink: "#0A0A0A" },
   codex: { name: "Codex", color: "#10A37F", ink: "#0B0F0E" },
@@ -172,6 +174,7 @@ export const BRAND: Record<AgentKind, { name: string; color: string; ink: string
 };
 
 export const HOST_BRAND: Record<Exclude<HostKind, "local">, { name: string; color: string }> = {
+  "docker-sandbox": { name: "Docker Sandboxes", color: "#2496ED" },
   ssh: { name: "SSH", color: "#9AA4B2" },
   daytona: { name: "Daytona", color: "#2ECC71" },
   boat: { name: "boat", color: "#4F8CFF" },

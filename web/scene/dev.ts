@@ -36,6 +36,7 @@ const HOSTS: Host[] = [
   { kind: "ssh", id: "ssh:shubham", name: "shubham" },
 ];
 const MODELS: Record<AgentKind, string> = {
+  omp: "teck-orchestrator",
   claude: "claude-opus-5-5", commandcode: "cmd-1", codex: "gpt-5.6-sol", opencode: "deepseek/deepseek-v4-pro",
   droid: "droid-core", gemini: "gemini-3-pro", qwen: "qwen3.5-coder", cursor: "cursor-agent",
 };

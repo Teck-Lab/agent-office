@@ -115,6 +115,7 @@ export const PLATFORM_KEY_NAMES: readonly string[] = ["DAYTONA_API_KEY", "VERCEL
 
 /** Static facts per agent that sessions (A) and cloud (C) both need. A owns corrections. */
 export interface AgentFacts {
+  observedOnly?: boolean;
   /** Executables, first found on PATH wins. */
   bins: readonly string[];
   /** npm package, for `npm i -g` (local hint and remote install). */
@@ -132,6 +133,7 @@ export interface AgentFacts {
 }
 
 export const AGENT_FACTS: Record<AgentKind, AgentFacts> = {
+  omp: { bins: [], installCmd: "OMP is observed through external events", keyNames: [], observedOnly: true },
   claude: {
     bins: ["claude"],
     npm: "@anthropic-ai/claude-code",

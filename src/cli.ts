@@ -48,6 +48,7 @@ const ALL_AGENTS: AgentKind[] = [...AGENT_KINDS];
 const PORT_FALLBACK = 20;
 /** Terminal stand-ins for the logos. */
 const GLYPH: Record<AgentKind, string> = {
+  omp: "O",
   claude: "✻",
   commandcode: "⌘",
   codex: "⬡",
@@ -79,6 +80,9 @@ interface Options {
   control: boolean;
   /** Started by the background service (launchd / systemd): help-hidden. */
   service: boolean;
+  externalConfig?: string;
+  externalOnly?: boolean;
+  parentPid?: number;
 }
 
 class UsageError extends Error {}
@@ -112,6 +116,9 @@ function parseArgs(argv: string[]): Options {
       return v;
     };
     switch (flag) {
+      case "--parent-pid": { const pid=Number(value()); if(!Number.isSafeInteger(pid)||pid<1)throw new UsageError("Invalid parent PID"); o.parentPid=pid; break; }
+      case "--external-config": o.externalConfig = value(); break;
+      case "--external-only": o.externalOnly = true; o.cloud = false; o.control = false; break;
       case "--port":
       case "-p": {
         const v = value();
@@ -286,13 +293,13 @@ function banner(o: Options, server: OfficeServer, state: OfficeState, version: s
   const cols = Math.max(60, process.stdout.columns ?? 100);
   const rows: string[][] = [[]];
   let width = 0;
-  for (const a of o.agents) {
+  for (const a of o.externalOnly ? ["omp" as const] : o.agents) {
     const w = BRAND[a].name.length + 5;
     if (width && 15 + width + w > cols) rows.push([]), (width = 0);
     rows[rows.length - 1]!.push(`${brand(a)(GLYPH[a])} ${BRAND[a].name}`);
     width += w;
   }
-  rows.forEach((r, i) => out(`${PAD}   ${label(i ? "" : o.demo ? "Cast" : "Watching")}${r.join(dim("   "))}`));
+  rows.forEach((r, i) => out(`${PAD}   ${label(i ? "" : o.demo ? "Cast" : o.externalOnly ? "Receiving" : "Watching")}${r.join(dim("   "))}`));
   if (!o.demo) {
     const per = o.agents
       .map((a) => [a, sessions.filter((s) => s.agent === a).length] as const)
@@ -348,8 +355,8 @@ function logEvent(e: OfficeEvent): void {
 /* ---------- process plumbing ---------- */
 
 function readVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  for (const relative of ["../package.json", "./package.json"]) try {
+    const pkg = JSON.parse(readFileSync(new URL(relative, import.meta.url), "utf8"));
     if (pkg && (pkg.name === "theagentoffice" || pkg.name === "agentoffice") && typeof pkg.version === "string") return pkg.version;
   } catch {
     // Fall through: running from somewhere without the package.json beside it.
@@ -402,6 +409,8 @@ ${bold("Remotes")}  agents in sandboxes and on other machines, in the same offic
   --boat [id]       boat VMs (never auto-detected: boat keeps every command's output for 90 days)
   --no-cloud        Don't auto-detect sandbox platforms you're logged in to
   --local-only      Only this machine (ignores the flags above and config.json)
+  --external-config <file>  Enable authenticated push-event ingestion
+  --external-only   Observe push events only; disable discovery and control
   --no-control      Watch-only: no hiring or driving agents from the page
   Without flags, platforms you're logged in to are watched in your own scope only: Daytona's
   personal organization, Railway's linked project, the office's own project and sandboxes, the sandboxes your railway CLI made,
@@ -466,7 +475,7 @@ async function main(): Promise<void> {
     // The demo plays from the top for each new viewer, so every recording opens on the arrivals.
     demo = startDemo({ onEvent, seed: o.seed, agents: o.agents, paused: true });
     source = demo;
-  } else {
+  } else if (!o.externalOnly) {
     try {
       source = startIngest({
         agents: o.agents,
@@ -481,7 +490,7 @@ async function main(): Promise<void> {
   // a sandbox or onto an ssh box are watched through it.
   // One hourly Railway API budget for the watcher and the control plane's own Railway calls.
   const railwayBudget = new RailwayBudget();
-  const remotes = o.demo || o.localOnly ? undefined : watchRemotes(o, onEvent, controlOn, railwayBudget, (id) => state.has(id));
+  const remotes = o.demo || o.localOnly || o.externalOnly ? undefined : watchRemotes(o, onEvent, controlOn, railwayBudget, (id) => state.has(id));
   if (remotes) {
     const local = source;
     source = { stop: () => (local.stop(), remotes.stop()) };
@@ -546,7 +555,7 @@ async function main(): Promise<void> {
           demo!.restart();
         }
       : undefined;
-    return startServer({ state, host: o.host, port, portFallback: port === o.port ? PORT_FALLBACK : 0, secret, onViewer, control: plane });
+    return startServer({ state, externalConfig: o.externalConfig, host: o.host, port, portFallback: port === o.port ? PORT_FALLBACK : 0, secret, onViewer, control: plane });
   };
   try {
     server = await serve(o.port);
@@ -567,7 +576,8 @@ async function main(): Promise<void> {
 
   // Lets the MCP server inside each agent find this office on a non-default port.
   const advertised = advertise(o, server, version, secret, controlOn);
-  if (!o.demo) await settle(state);
+  if (o.parentPid) { const timer=setInterval(()=>{try{process.kill(o.parentPid!,0)}catch(e){if((e as NodeJS.ErrnoException).code === "ESRCH")process.emit("SIGTERM")}},1000); timer.unref(); }
+  if (!o.demo && !o.externalOnly) await settle(state);
   if (remotes) await remotes.ready;
   state.tick();
   // Agents started in a terminal walk in at launch and leave when they quit (src/control/presence.ts).

@@ -17,7 +17,7 @@ import type { AgentAvailability, ControlMode, PermissionMode } from "../shared/c
 import { which } from "../remote/util.ts";
 import { AGENT_FACTS, type Launch, type PermissionFlags, type PtyBackend, type TermDrive } from "./types.ts";
 
-export const AGENTS = Object.keys(AGENT_FACTS) as AgentKind[];
+export const AGENTS = (Object.keys(AGENT_FACTS) as AgentKind[]).filter(a => !AGENT_FACTS[a].observedOnly);
 export const ALL_PERMISSIONS: PermissionMode[] = ["default", "acceptEdits", "plan", "bypass"];
 
 /** Paste, then Enter this much later: sooner and Claude's TUI takes the Enter as a newline in the paste. */
@@ -25,6 +25,7 @@ export const ENTER_DELAY_MS = 600;
 
 /** TUI flags per permission mode. A missing mode can't be started (and isn't offered). */
 export const PERMISSION_FLAGS: Record<AgentKind, PermissionFlags> = {
+  omp: {}, // Push-only observer: no launch permission mode.
   claude: {
     default: ["--permission-mode", "default"],
     acceptEdits: ["--permission-mode", "acceptEdits"],

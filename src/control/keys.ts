@@ -25,7 +25,7 @@ export const MAX_KEYS = 64;
 /** What Connect Claude stores (claude setup-token's token). */
 export const OAUTH_TOKEN_KEY = "CLAUDE_CODE_OAUTH_TOKEN";
 export const MAX_KEY_BYTES = 16 * 1024;
-const AGENT_KINDS = Object.keys(AGENT_FACTS) as AgentKind[];
+const AGENT_KINDS = (Object.keys(AGENT_FACTS) as AgentKind[]).filter(a => !AGENT_FACTS[a].observedOnly);
 
 interface Stored {
   name: string;

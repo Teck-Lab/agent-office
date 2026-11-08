@@ -12,8 +12,8 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join, posix, win32 } from "node:path";
 import type { Host, HostKind, RemoteTarget } from "../shared/events.ts";
 
-export type CloudKind = Exclude<HostKind, "local" | "ssh">;
-export type RemoteKind = Exclude<HostKind, "local">;
+export type CloudKind = Exclude<HostKind, "local" | "ssh" | "docker-sandbox">;
+export type RemoteKind = Exclude<HostKind, "local" | "docker-sandbox">;
 
 export type RemoteErrorCode =
   | "auth"        // not logged in, login expired, token refused
