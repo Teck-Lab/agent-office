@@ -28,8 +28,9 @@ async function load(...entries) {
 
 const {
   Layout, Camera, SEAT_W, MAX_BENCH, MAX_HOT, POD_H, DESK_W, DESK_DY, SEAT_DY, DESK_ROW, ROOM_MIN_W, ROOM_MIN_W_TALL,
-  internSummary, OfficeModel, ControlStore,
+  internSummary, OfficeModel, ControlStore, Crew,
 } = await load(
+  "web/scene/workers.ts",
   "web/scene/layout.ts",
   "web/scene/camera.ts",
   "web/scene/util.ts",
@@ -365,4 +366,82 @@ test("control store: a control_info that lands while GET /api/control is out isn
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+
+test("Docker Sandbox OMP sessions and helpers share one cloud pod per sandbox",()=>{
+  const layout=new Layout();
+  const first={kind:"docker-sandbox",id:"sandbox-one",name:"Teck.Monorepo"};
+  const second={kind:"docker-sandbox",id:"sandbox-two",name:"Other project"};
+  layout.allocMain("main-one","omp","Teck.Monorepo",first,0);
+  layout.allocMain("main-two","omp","Teck.Monorepo",first,0);
+  layout.allocIntern("helper","main-one","omp","Teck.Monorepo",first,0);
+  layout.allocMain("other","omp","Other project",second,0);
+  assert.equal(layout.blocks.size,2);
+  for(const block of layout.blocks.values())assert.equal(block.zone,"cloud");
+  assert.equal(layout.blocks.get("host:sandbox-one").host.kind,"docker-sandbox");
+  assert.equal(layout.seatOf("helper").kind,"intern");
+});
+
+
+test("late coordinator binding moves its whole native family to the office, retaining Docker host and worker identity",()=>{
+  let clock=0;const crew=new Crew(()=>clock);
+  const host={kind:"docker-sandbox",id:"sandbox-hierarchy",name:"Teck.Monorepo"};
+  const ws=(workerId,extra={})=>({workerId,agent:"omp",project:"Teck.Monorepo",host,status:"thinking",lastTs:new Date().toISOString(),toolCalls:0,tokens:0,filesTouched:0,...extra});
+  crew.load({version:1,startedAt:new Date().toISOString(),demo:false,recent:[],workers:[ws("coordinator"),ws("native",{parentId:"coordinator"}),ws("executor",{orchestration:{role:"executor",runId:"run-one",taskId:"task-one",dispatchId:"dispatch-one"},placement:"cloud"})]});
+  const original=crew.workers.get("coordinator");
+  assert.equal(original.seat.block.zone,"cloud");
+  crew.apply({seq:1,ts:new Date().toISOString(),kind:"thinking",workerId:"coordinator",agent:"omp",project:"Teck.Monorepo",host,placement:"office",orchestration:{role:"coordinator",runId:"run-one"}});
+  assert.equal(crew.workers.size,3);assert.equal(crew.workers.get("coordinator"),original);
+  assert.equal(original.seat.block.zone,"local");assert.equal(original.host.id,host.id);
+  assert.equal(crew.workers.get("native").seat.block,original.seat.block);
+  assert.equal(crew.workers.get("executor").seat.block.zone,"cloud");
+  assert.equal(crew.sameTeam("coordinator","executor"),true);
+  assert.equal(crew.sameTeam("coordinator","native"),true);
+  assert.equal(crew.sameTeam("coordinator","missing"),false);
+  assert.equal([...crew.layout.blocks.values()].flatMap(b=>b.stations).filter(s=>s.main).length,2);
+  crew.apply({seq:2,ts:new Date().toISOString(),kind:"thinking",workerId:"coordinator",agent:"omp",project:"Teck.Monorepo",host,placement:"cloud",orchestration:null});
+  assert.equal(original.seat.block.zone,"cloud");assert.equal(original.orchestration,null);
+  assert.equal(crew.workers.get("native").seat.block,original.seat.block);
+  assert.equal(crew.workers.size,3);
+});
+
+test("nested native helpers remain on the owning main's bench",()=>{
+  const layout=new Layout(),host={kind:"docker-sandbox",id:"nested",name:"Teck.Monorepo"};
+  layout.allocMain("coordinator","omp","Teck.Monorepo",host,0,"office");
+  const one=layout.allocIntern("helper-one","coordinator","omp","Teck.Monorepo",host,0,"office");
+  const two=layout.allocIntern("helper-two","helper-one","omp","Teck.Monorepo",host,0,"office");
+  assert.equal(two.kind,"intern");assert.equal(one.block,two.block);assert.equal(two.block.zone,"local");
+});
+
+
+test("out-of-order native helper checkpoints adopt the real parent in snapshots and live events",()=>{
+  const crew=new Crew(()=>0),host={kind:"docker-sandbox",id:"out-of-order",name:"Teck.Monorepo"};
+  const ws=(workerId,parentId)=>({workerId,parentId,agent:"omp",project:"Teck.Monorepo",host,status:"thinking",lastTs:new Date().toISOString(),toolCalls:0,tokens:0,filesTouched:0,placement:"office",orchestration:{role:"coordinator",runId:"run-order"}});
+  crew.load({version:1,startedAt:new Date().toISOString(),demo:false,recent:[],workers:[ws("deep","child"),ws("child","main"),ws("main")]});
+  assert.equal(crew.workers.get("deep").seat.kind,"intern");assert.equal(crew.workers.get("child").seat.kind,"intern");
+  assert.equal(crew.workers.get("deep").seat.block,crew.workers.get("main").seat.block);
+  crew.clear();
+  crew.apply({...ws("child","main"),seq:1,ts:new Date().toISOString(),kind:"subagent_start"});
+  crew.apply({...ws("main"),seq:2,ts:new Date().toISOString(),kind:"session_start"});
+  assert.equal(crew.workers.size,2);assert.equal(crew.workers.get("child").seat.kind,"intern");
+  assert.equal(crew.workers.get("child").seat.block,crew.workers.get("main").seat.block);
+});
+
+
+test("idle native descendants inherit a late Run and lose revoked ownership in live folds",()=>{
+  const crew=new Crew(()=>0),model=new OfficeModel(),host={kind:"docker-sandbox",id:"late-run",name:"Teck.Monorepo"};
+  const event=(workerId,extra={})=>({seq:1,ts:new Date().toISOString(),kind:"session_start",agent:"omp",project:"Teck.Monorepo",host,workerId,...extra});
+  const events=[event("main",{orchestration:{role:"coordinator"},placement:"office"}),event("native",{kind:"subagent_start",parentId:"main",orchestration:null,placement:"cloud"}),event("executor",{orchestration:{role:"executor",runId:"run-late",taskId:"task-one",dispatchId:"dispatch-one"},placement:"cloud"})];
+  for(const e of events){model.apply(e);crew.apply(e);}
+  const bound=event("main",{kind:"thinking",orchestration:{role:"coordinator",runId:"run-late"},placement:"office"});
+  model.apply(bound);crew.apply(bound);
+  assert.equal(model.get("native").orchestration.runId,"run-late");assert.equal(crew.workers.get("native").orchestration.runId,"run-late");
+  assert.equal(crew.sameTeam("executor","native"),true);assert.equal(crew.workers.get("native").seat.block.zone,"local");
+  const revoked=event("main",{kind:"thinking",orchestration:null,placement:"cloud"});model.apply(revoked);crew.apply(revoked);
+  assert.equal(model.get("native").orchestration,null);assert.equal(crew.workers.get("native").orchestration,null);
+  assert.equal(crew.sameTeam("executor","native"),false);
+  assert.equal(crew.workers.get("native").seat.block.zone,"cloud");
+  crew.apply(event("deep",{kind:"subagent_start",parentId:"native"}));crew.apply(event("main",{kind:"session_end"}));
+  assert.equal(crew.workers.get("deep").leaving,true);
 });

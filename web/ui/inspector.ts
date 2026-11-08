@@ -121,7 +121,13 @@ export function createInspector(opts: { onClose(): void; onFocus(workerId: strin
       ["project", w.parentId ? w.project : undefined],
       ["host", remote ? hostLabel(remote) : undefined],
       ["model", w.model],
-      ["role", w.parentId ? w.role : undefined],
+      ["role", w.role],
+      ["room", w.placement === "office" ? "Office" : w.placement === "cloud" ? "Cloud" : undefined],
+      ["Orca role", w.orchestration?.role],
+      ["run", w.orchestration?.runId ? truncateMiddle(w.orchestration.runId, 34) : undefined, w.orchestration?.runId],
+      ["task", w.orchestration?.taskId ? truncateMiddle(w.orchestration.taskId, 34) : undefined, w.orchestration?.taskId],
+      ["dispatch", w.orchestration?.dispatchId ? truncateMiddle(w.orchestration.dispatchId, 34) : undefined, w.orchestration?.dispatchId],
+      ["issue", w.orchestration?.issue ? truncateMiddle(w.orchestration.issue, 34) : undefined, w.orchestration?.issue],
       ["cwd", cwd ? truncateMiddle(cwd, 34) : undefined, cwd],
     ]);
     setText(calls, fmtCount(w.toolCalls));

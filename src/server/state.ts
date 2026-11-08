@@ -22,6 +22,7 @@
 import { homedir } from "node:os";
 import { foldPrivate } from "../ingest/presence.ts";
 import {
+  cleanOrchestration, nativeFamilyIds,
   GONE_MS,
   IDLE_MS,
   SUMMARY_MAX,
@@ -136,6 +137,10 @@ export class OfficeState {
     const now = this.now();
     if (this.buried(e.workerId, now) && !(e.kind === "session_start" && e.replaces)) return null;
     if (e.parentId && this.buried(e.parentId, now)) return null;
+    const owner = e.parentId ? this.workers.get(e.parentId)?.state : undefined;
+    if (owner?.orchestration !== undefined) {
+      e.orchestration = owner.orchestration; e.placement = owner.placement;
+    }
     let w = this.workers.get(e.workerId);
 
     if (!w) {
@@ -443,6 +448,13 @@ export class OfficeState {
   private merge(w: Worker, e: RawEvent): void {
     const s = w.state;
     if (e.host) s.host = e.host;
+    if (e.placement) s.placement = e.placement;
+    if (e.orchestration !== undefined) {
+      s.orchestration = e.orchestration;
+      for (const id of nativeFamilyIds(s.workerId, [...this.workers.values()].map(w => w.state)).slice(1)) {
+        const child = this.workers.get(id)!; child.state.orchestration = s.orchestration; child.state.placement = s.placement;
+      }
+    }
     if (e.parentId) s.parentId = e.parentId;
     if (e.project) s.project = e.project;
     if (e.cwd) s.cwd = e.cwd;
@@ -490,12 +502,10 @@ export class OfficeState {
   /** Publish the ending, plus subagent_end for any interns still at their desks, and forget them. */
   private remove(w: Worker, e: RawEvent): OfficeEvent {
     const id = w.state.workerId;
-    for (const child of [...this.workers.values()]) {
-      if (child.state.parentId !== id) continue;
-      this.workers.delete(child.state.workerId);
-      if (child.removeAt === undefined) {
-        this.publish({ ...this.base(child, e.ts), kind: "subagent_end" });
-      }
+    for (const childId of nativeFamilyIds(id, [...this.workers.values()].map(w => w.state)).slice(1).reverse()) {
+      const child = this.workers.get(childId)!;
+      this.workers.delete(childId);
+      if (child.removeAt === undefined) this.publish({ ...this.base(child, e.ts), kind: "subagent_end" });
     }
     this.workers.delete(id);
     w.state.status = e.kind;
@@ -507,6 +517,8 @@ export class OfficeState {
     const s = w.state;
     const b: Omit<RawEvent, "kind"> = { ts, agent: s.agent, workerId: s.workerId, project: s.project };
     if (s.host) b.host = s.host;
+    if (s.placement) b.placement = s.placement;
+    if (s.orchestration !== undefined) b.orchestration = s.orchestration;
     if (s.parentId) b.parentId = s.parentId;
     if (s.cwd) b.cwd = s.cwd;
     if (s.model) b.model = s.model;
@@ -548,6 +560,10 @@ export class OfficeState {
     };
     const host = cleanHost(raw.host);
     if (host) e.host = host;
+    if (raw.orchestration !== undefined) {
+      e.orchestration = cleanOrchestration(raw.orchestration);
+      e.placement = e.orchestration?.role === "coordinator" ? "office" : "cloud";
+    }
     const parentId = clean(raw.parentId, ID_MAX);
     if (parentId && parentId !== workerId) e.parentId = parentId;
     // Remote paths are shown as they are: "~" would be this machine's home.

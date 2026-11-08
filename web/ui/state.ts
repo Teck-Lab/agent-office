@@ -4,7 +4,7 @@
  * actions and mood. The scene keeps its own state for drawing; this one only
  * feeds counters, the legend and the inspector, so it can stay small.
  */
-import { BRAND, type AgentKind, type EventKind, type Host, type OfficeEvent, type Snapshot, type ToolCategory, type WorkerState } from "../../src/shared/events.ts";
+import { BRAND, nativeFamilyIds, type AgentKind, type EventKind, type Host, type OfficeEvent, type Snapshot, type ToolCategory, type WorkerState } from "../../src/shared/events.ts";
 import { parseTs } from "./format.ts";
 
 export interface Action {
@@ -141,6 +141,8 @@ export class OfficeModel {
         model: e.model,
         role: e.role,
         host: e.host,
+        placement: e.placement,
+        orchestration: e.orchestration,
         status: SIGNALS.has(e.kind) ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
@@ -161,6 +163,16 @@ export class OfficeModel {
     if (e.model) w.model = e.model;
     if (e.role) w.role = e.role;
     if (e.host) w.host = e.host;
+    if (e.parentId) w.parentId = e.parentId;
+    if (e.placement) w.placement = e.placement;
+    if (e.orchestration !== undefined) {
+      const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
+      w.orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;
+      w.placement = parent?.placement ?? e.placement ?? w.placement;
+      for (const id of nativeFamilyIds(w.workerId, this.workers.values()).slice(1)) {
+        const child = this.workers.get(id)!; child.orchestration = w.orchestration; child.placement = w.placement;
+      }
+    }
     w.lastTs = e.ts;
     if (e.kind === "status") w.mood = moodOf(e) || undefined;
     if (e.kind !== "tool_end" && !SIGNALS.has(e.kind)) w.status = e.kind;

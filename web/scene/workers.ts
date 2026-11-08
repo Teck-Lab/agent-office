@@ -7,8 +7,8 @@
  * the office TV. Each activity is held on screen for a minimum time so fast
  * tool bursts stay readable. draw() emits y-sorted draw calls for the scene.
  */
-import type { AgentKind, Host, OfficeEvent, Snapshot, ToolCategory, WorkerState } from "../../src/shared/events.ts";
-import { BRAND, HOST_BRAND, IDLE_MS } from "../../src/shared/events.ts";
+import type { AgentKind, Host, OfficeEvent, Snapshot, ToolCategory, WorkerState, OrcaCoordination, Placement } from "../../src/shared/events.ts";
+import { BRAND, HOST_BRAND, IDLE_MS, nativeFamilyIds } from "../../src/shared/events.ts";
 import { BRAND_ART, C, rgba, type ArtKey } from "./palette.ts";
 import {
   Layout, WALL_H, CORRIDOR_Y, DESK_W, SEAT_W, LAPTOP_DX, RUG_TOP,
@@ -33,6 +33,8 @@ export interface Worker {
   agent: AgentKind;
   project: string;
   host?: Host;
+  placement?: Placement;
+  orchestration?: OrcaCoordination | null;
   remote: boolean;
   cwd?: string;
   model?: string;
@@ -134,7 +136,7 @@ export function brandInk(agent: AgentKind): string {
   return (BRAND_ART[agent] ?? BRAND_ART.claude).ink;
 }
 
-const isRemote = (h?: Host) => !!h && h.kind !== "local";
+const isRemote = (h?: Host): h is Host => !!h && h.kind !== "local";
 const OFFLINE = /^remote offline/i;
 
 export interface DrawCall { y: number; fn: (g: CanvasRenderingContext2D) => void }
@@ -178,7 +180,15 @@ export class Crew {
   load(s: Snapshot) {
     this.clear();
     const now = this.now();
-    const sorted = [...s.workers].sort((a, b) => Number(!!a.parentId) - Number(!!b.parentId));
+    const byId = new Map(s.workers.map(w => [w.workerId, w]));
+    const depth = (w: WorkerState) => {
+      let n = 0; const seen = new Set([w.workerId]);
+      while (w.parentId && !seen.has(w.parentId)) {
+        seen.add(w.parentId); const parent = byId.get(w.parentId); if (!parent) break; n++; w = parent;
+      }
+      return n;
+    };
+    const sorted = [...s.workers].sort((a, b) => depth(a) - depth(b));
     let tools = 0;
     for (const ws of sorted) {
       const w = this.spawn(ws, now, false);
@@ -227,17 +237,19 @@ export class Crew {
     this.layout.setOffline(host.id, down, this.now());
   }
 
-  private spawn(e: Pick<OfficeEvent, "workerId" | "agent" | "project" | "parentId" | "role" | "cwd" | "model" | "host">, now: number, arrive: boolean): Worker {
+  private spawn(e: Pick<OfficeEvent, "workerId" | "agent" | "project" | "parentId" | "role" | "cwd" | "model" | "host" | "placement" | "orchestration">, now: number, arrive: boolean): Worker {
     const parent = e.parentId ? this.workers.get(e.parentId) : undefined;
     const intern = !!e.parentId;
     const host = e.host ?? parent?.host;
-    const seat = parent && !parent.intern
-      ? this.layout.allocIntern(e.workerId, parent.id, e.agent, e.project, host, now)
-      : this.layout.allocMain(e.workerId, e.agent, e.project, host, now);
+    const placement = parent?.placement ?? e.placement;
+    const orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;
+    const seat = parent
+      ? this.layout.allocIntern(e.workerId, parent.id, e.agent, e.project, host, now, placement)
+      : this.layout.allocMain(e.workerId, e.agent, e.project, host, now, placement);
     const remote = seat.remote;
     const seed = hash(e.workerId);
     const w: Worker = {
-      id: e.workerId, agent: e.agent, project: e.project, host, remote, cwd: e.cwd, model: e.model, role: e.role, parentId: e.parentId,
+      id: e.workerId, agent: e.agent, project: e.project, host, placement, orchestration, remote, cwd: e.cwd, model: e.model, role: e.role, parentId: e.parentId,
       intern, look: lookFor(e.workerId, e.agent, intern), seed, seat,
       x: seat.x, y: seat.y, dir: "up", path: [], speed: 44, walkDist: 0, walking: false, seated: true, stand: 0,
       act: "thinking", actSince: now, summary: "", summaryAt: 0, pending: null, needsHuman: false, show: null,
@@ -262,7 +274,40 @@ export class Crew {
       w.walking = false; // waits for the doors
     }
     this.workers.set(w.id, w);
+    // Child checkpoints can arrive before a parent after a server reconnect.
+    if ([...this.workers.values()].some(child => child.parentId === w.id)) {
+      this.rehome(w, placement ?? (seat.remote ? "cloud" : "office"), now);
+    }
     return w;
+  }
+
+  /** A late Orca binding moves the existing crew, retaining identity/activity. */
+  private rehome(root: Worker, placement: Placement, now: number) {
+    const family = nativeFamilyIds(root.id, [...this.workers.values()].map(w => ({ workerId: w.id, parentId: w.parentId })))
+      .map(id => this.workers.get(id)!);
+    for (const w of [...family].reverse()) this.layout.free(w.id, now);
+    for (const w of family) {
+      const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
+      w.placement = placement; if (w !== root) w.orchestration = root.orchestration;
+      w.seat = parent ? this.layout.allocIntern(w.id, parent.id, w.agent, w.project, w.host, now, placement)
+        : this.layout.allocMain(w.id, w.agent, w.project, w.host, now, placement);
+      w.remote = w.seat.remote; w.path = []; w.walking = false; w.toSeat = false; w.seated = true; w.tp = null;
+    }
+  }
+
+  /** Orca dispatch roots share a Run; native descendants share their owning root. */
+  sameTeam(first: string, second: string): boolean {
+    const a = this.workers.get(first), b = this.workers.get(second);
+    if (!a || !b) return false;
+    if (a.orchestration?.runId && a.orchestration.runId === b.orchestration?.runId) return true;
+    const root = (w: Worker) => {
+      const seen = new Set<string>();
+      while (w.parentId && !seen.has(w.id)) {
+        seen.add(w.id); const parent = this.workers.get(w.parentId); if (!parent) break; w = parent;
+      }
+      return w.id;
+    };
+    return root(a) === root(b);
   }
 
   private walkTo(w: Worker, pts: Pt[], done?: () => void) {
@@ -311,6 +356,16 @@ export class Crew {
       w = this.spawn(e, now, true);
       if (e.parentId && e.kind !== "subagent_start") this.parentPoints(e.parentId, now);
     }
+    if (e.orchestration !== undefined) {
+      const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
+      w.orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;
+      for (const id of nativeFamilyIds(w.id, [...this.workers.values()].map(worker => ({workerId:worker.id,parentId:worker.parentId}))).slice(1)) {
+        this.workers.get(id)!.orchestration = w.orchestration;
+      }
+    }
+    const ownerPlacement = w.parentId ? this.workers.get(w.parentId)?.placement : undefined;
+    const placement = ownerPlacement ?? e.placement;
+    if (placement && placement !== w.placement) this.rehome(w, placement, now);
     w.lastEventAt = now;
     if (e.cwd) w.cwd = e.cwd;
     if (e.model) w.model = e.model;
@@ -407,7 +462,9 @@ export class Crew {
       case "subagent_end":
       case "session_end":
         this.leave(w, now);
-        if (e.kind === "session_end") for (const k of this.workers.values()) if (k.parentId === w.id) this.leave(k, now);
+        for (const id of nativeFamilyIds(w.id, [...this.workers.values()].map(worker => ({workerId:worker.id,parentId:worker.parentId}))).slice(1)) {
+          this.leave(this.workers.get(id)!, now);
+        }
         break;
     }
   }
@@ -705,7 +762,7 @@ export class Crew {
     if (w.tp) return w.tp.out ? (now - w.tp.t0 > 200 ? "off" : "boot") : now - w.tp.t0 < TP_MS * 0.5 ? "off" : "boot";
     if (w.walking && !w.seated) return now - w.bornAt < 400 ? "off" : "boot";
     if (w.leaving) return "off";
-    if (w.remote && this.offline.has(w.host!.id)) return "off";
+    if (isRemote(w.host) && this.offline.has(w.host.id)) return "off";
     if (w.show?.kind === "flip") return "fail";
     if (w.show?.kind === "cheer") return "pass";
     if (w.show?.kind === "alarm") return "error";
@@ -982,7 +1039,7 @@ export class Crew {
     const x = Math.round(w.x) - (SPRITE_W >> 1);
     const y = Math.round(w.y) - SPRITE_FOOT;
     let alpha = clamp(w.alpha, 0, 1);
-    if (w.remote && w.host && this.offline.has(w.host.id)) alpha *= 0.55;
+    if (isRemote(w.host) && this.offline.has(w.host.id)) alpha *= 0.55;
     // materialising: the sprite builds up from the feet (or dissolves from the head)
     let clipTop = -1;
     if (w.tp) {
@@ -1003,6 +1060,7 @@ export class Crew {
     g.fillRect(x + 5, Math.round(w.y) + 1, 8, 1);
     const sel = this.selected === w.id;
     const hov = this.hovered === w.id && !sel;
+    const teammate = !sel && this.selected !== null && this.sameTeam(this.selected, w.id);
     if (sel) {
       const col = brandInk(w.agent);
       const k = Math.floor(now / 160) % 2;
@@ -1015,10 +1073,10 @@ export class Crew {
         g.fillRect(fx + i, fy - dy, 1, 1);
       }
     }
-    if (sel || hov) {
-      const col = sel ? brandInk(w.agent) : C.white;
+    if (sel || hov || teammate) {
+      const col = sel || teammate ? brandInk(w.agent) : C.white;
       const sil = silhouette(spr, col);
-      g.globalAlpha = (sel ? 0.75 + 0.25 * Math.sin(now * 0.008) : 0.6) * alpha;
+      g.globalAlpha = (sel ? 0.75 + 0.25 * Math.sin(now * 0.008) : teammate ? 0.35 : 0.6) * alpha;
       g.drawImage(sil.c, x - 1, y); g.drawImage(sil.c, x + 1, y); g.drawImage(sil.c, x, y - 1); g.drawImage(sil.c, x, y + 1);
       g.globalAlpha = alpha;
     }
