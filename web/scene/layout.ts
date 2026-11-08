@@ -127,7 +127,7 @@ const signW = (label: string, marks = 1) => 22 + [...label].length * 6 + (marks 
 /** How far each extra mark on a shared pod's sign is stepped right. */
 export const MARK_STEP = 8;
 /** Room a cloud pod's sign needs for its platform tag ("RAILWAY ", 3x5 caps at 4 px a letter). */
-const TAG_LEN: Record<string, number> = { ssh: 3, daytona: 7, boat: 4, railway: 7, vercel: 6 };
+const TAG_LEN: Record<string, number> = { "docker-sandbox": 6, ssh: 3, daytona: 7, boat: 4, railway: 7, vercel: 6 };
 export const tagW = (b: { zone: Zone; host?: Host }) => (b.zone === "cloud" && b.host && b.host.kind !== "local" ? (TAG_LEN[b.host.kind] ?? 0) * 4 + 4 : 0);
 const stationW = (s: Station) => (s.hot ? Math.max(1, s.seats) * SEAT_W : DESK_W + (s.seats ? BENCH_GAP + s.seats * SEAT_W : 0));
 /** Where a station's bench starts, relative to the station. */

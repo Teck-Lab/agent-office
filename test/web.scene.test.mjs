@@ -366,3 +366,18 @@ test("control store: a control_info that lands while GET /api/control is out isn
     globalThis.fetch = realFetch;
   }
 });
+
+
+test("Docker Sandbox OMP sessions and helpers share one cloud pod per sandbox",()=>{
+  const layout=new Layout();
+  const first={kind:"docker-sandbox",id:"sandbox-one",name:"Teck.Monorepo"};
+  const second={kind:"docker-sandbox",id:"sandbox-two",name:"Other project"};
+  layout.allocMain("main-one","omp","Teck.Monorepo",first,0);
+  layout.allocMain("main-two","omp","Teck.Monorepo",first,0);
+  layout.allocIntern("helper","main-one","omp","Teck.Monorepo",first,0);
+  layout.allocMain("other","omp","Other project",second,0);
+  assert.equal(layout.blocks.size,2);
+  for(const block of layout.blocks.values())assert.equal(block.zone,"cloud");
+  assert.equal(layout.blocks.get("host:sandbox-one").host.kind,"docker-sandbox");
+  assert.equal(layout.seatOf("helper").kind,"intern");
+});
