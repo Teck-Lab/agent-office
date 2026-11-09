@@ -10,7 +10,7 @@ await build({stdin:{contents:'export * from "./src/shared/meetings.ts";export * 
 const {Meetings,cleanMeeting,meetingRoom,meetingSeats,whiteboardRect,Crew}=await import(pathToFileURL(file));
 test('meeting room contains the whiteboard left of the elevator with eight distinct seats',()=>{
  for(const w of [240,330,1000]){const board=whiteboardRect({x:0,y:0,w,h:400}),room=meetingRoom(board),seats=meetingSeats(board);
- assert.ok(board.x>=room.x&&board.x+board.w<=room.x+room.w);assert.ok(board.y>=room.y&&board.y+board.h<room.y+room.h);assert.ok(room.x+room.w<12);
+ assert.ok(board.x>=room.x&&board.x+board.w<=room.x+room.w);assert.ok(board.y>=room.y&&board.y+board.h<room.y+room.h);assert.ok(room.x+room.w<12);assert.ok(room.y+room.h<=198,'partitions must stay within the smallest office floor');
  assert.equal(new Set(seats.map(p=>p.x+':'+p.y)).size,8);assert.ok(seats.every(p=>p.x>room.x&&p.x<room.x+room.w&&p.y>board.y+board.h&&p.y<room.y+room.h));}
 });
 test('meeting limits, host rights and source boundaries are enforced',()=>{

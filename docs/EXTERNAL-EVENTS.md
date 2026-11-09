@@ -121,3 +121,7 @@ identity-aware adapter is required for actions instead of guessing a session by 
 Meeting positions are presentation only: real execution host, desk allocation,
 subagent seats, task state, goals and Orca coordination remain unchanged. Native
 helpers keep the other Office tools. A meeting adds no dispatch or completion gate.
+
+Visual follow-up: the meeting table reuses the existing OMP office chair renderer.
+Warm plaster/wood partitions replace the glass outline, and the room bottom stays
+inside the smallest office floor (198 art pixels), preventing the protruding wall.
