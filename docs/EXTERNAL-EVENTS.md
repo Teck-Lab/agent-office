@@ -75,3 +75,20 @@ This opt-in metadata includes sanitized goal/task titles and blocker notes,
 unlike the activity-only observer. Prompts, tool arguments, output, files and
 credentials are not part of the plan schema. The integration adds no agent-control
 endpoint or additional MCP and continues using the authenticated loopback tunnel.
+
+
+## Reusable helper seats
+
+OMP can keep a completed helper idle/parked for later reuse. Producers should
+send subagent_end when that helper's turn settles terminally, stop its presence
+heartbeats, and send subagent_start on the same identity if it receives new work.
+This is a presentation lifecycle; it must not cancel or release the native helper.
+Nonterminal waits may use the summaries "Awaiting approval", "Awaiting helper work"
+or "Awaiting continuation" to retain their seats.
+
+For older producers, plain waiting helpers leave after 60 seconds without actual
+activity. Their quiet heartbeats are acknowledged without respawning the seat;
+real new activity makes the helper return. Metadata updates do not wake it.
+Parents supervising busy descendants remain visible, as do top-level sessions.
+Reconnect snapshots exclude helpers already departing. Fast reuse cancels the
+old departure animation, keeping the same native parent and worker identity.

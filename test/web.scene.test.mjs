@@ -460,3 +460,13 @@ test("idle native descendants inherit a late Run and lose revoked ownership in l
   crew.apply(event("deep",{kind:"subagent_start",parentId:"native"}));crew.apply(event("main",{kind:"session_end"}));
   assert.equal(crew.workers.get("deep").leaving,true);
 });
+
+
+test('a reusable OMP helper cancels its departure when a new turn starts before the animation ends',()=>{
+  let clock=0;const crew=new Crew(()=>clock),host={kind:'docker-sandbox',id:'reuse',name:'Sandbox'};
+  const base={seq:1,ts:new Date().toISOString(),agent:'omp',project:'Repo',host,placement:'cloud'};
+  crew.apply({...base,kind:'session_start',workerId:'main'});crew.apply({...base,kind:'subagent_start',workerId:'helper',parentId:'main'});
+  const first=crew.workers.get('helper');crew.apply({...base,kind:'subagent_end',workerId:'helper',parentId:'main'});assert.equal(first.leaving,true);
+  clock=100;crew.apply({...base,kind:'subagent_start',workerId:'helper',parentId:'main'});crew.apply({...base,kind:'thinking',workerId:'helper',parentId:'main'});
+  assert.equal(crew.workers.get('helper'),first);assert.equal(first.leaving,false);assert.equal(first.gone,false);assert.equal(first.parentId,'main');assert.equal(crew.workers.size,2);
+});

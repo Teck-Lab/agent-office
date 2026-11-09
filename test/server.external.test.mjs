@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,8 +11,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const temp = mkdtempSync(join(tmpdir(), 'agentoffice-external-'));
 const bundle = join(temp, 'server.mjs');
-await build({ stdin: { contents: 'export * from "./src/server/http.ts"; export * from "./src/server/state.ts";', resolveDir: root, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', outfile: bundle, logLevel: 'error' });
-const { startServer, OfficeState } = await import(pathToFileURL(bundle));
+await build({ stdin: { contents: 'export * from "./src/server/http.ts"; export * from "./src/server/state.ts"; export * from "./src/server/external.ts";', resolveDir: root, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', outfile: bundle, logLevel: 'error' });
+const { startServer, OfficeState, createExternalIngest } = await import(pathToFileURL(bundle));
 process.on('exit', () => rmSync(temp, { recursive: true, force: true }));
 const token = 'a'.repeat(64), sourceId = 'sandbox-a';
 const source = { token, project: 'Teck.Monorepo', host: { kind: 'docker-sandbox', id: sourceId, name: 'teck-orca-a' } };
@@ -178,4 +180,39 @@ test('Unicode goals and blocker notes stay inside the ingestion envelope',async 
   assert.equal((await send({events:[event('session_start','unicode',{plan})]})).status,202);
   const saved=state.snapshot().workers[0].plan;assert.ok(saved.truncated);
   assert.ok(Buffer.byteLength(JSON.stringify(saved))<=24*1024);assert.ok(saved.phases[0].tasks.length>0);
+});
+
+
+async function timedOffice(t){
+  let clock=Date.now(),sweep;const state=new OfficeState({now:()=>clock});
+  const config=join(temp,crypto.randomUUID()+'.json');writeFileSync(config,JSON.stringify({version:1,sources:{[sourceId]:source}}));
+  const ingest=createExternalIngest(config,state,{now:()=>clock,schedule:fn=>{sweep=fn;return {unref(){}}},cancel(){}});
+  const server=createServer((req,res)=>void ingest.handle(req,res));server.listen(0,'127.0.0.1');await once(server,'listening');
+  t.after(()=>{ingest.close();server.closeAllConnections();server.close()});
+  const send=async(events=[],heartbeat=[])=>{const r=await fetch('http://127.0.0.1:'+server.address().port+'/api/ingest',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({version:1,sourceId,events,heartbeat})});assert.equal(r.status,202);return r.json()};
+  return {state,send,advance:ms=>{clock+=ms},tick:()=>sweep(),at:()=>new Date(clock).toISOString()};
+}
+
+test('warm finished helpers leave after quiet grace despite heartbeats, stay gone and can be reused',async t=>{
+  const o=await timedOffice(t),plan={goal:null,phases:[{name:'Helper',tasks:[{content:'Inspect',status:'completed'}]}]};
+  await o.send([event('session_start'),event('subagent_start','helper',{parentId:'main',plan}),event('waiting','helper',{parentId:'main'})]);
+  o.advance(30000);await o.send([],['main','helper']);o.advance(31000);let r=await o.send([],['main','helper']);
+  assert.deepEqual(r.missing,[],'warm helper presence is acknowledged without respawning its seat');
+  assert.deepEqual(o.state.snapshot().workers.map(w=>w.workerId.split(':').at(-1)),['main']);
+  for(let i=0;i<4;i++){o.advance(15000);r=await o.send([],['main','helper']);assert.deepEqual(r.missing,[]);assert.equal(o.state.snapshot().workers.length,1);}
+  await o.send([event('plan','helper',{parentId:'main',ts:o.at(),plan})]);assert.equal(o.state.snapshot().workers.length,1,'metadata does not wake dormant helpers');
+  o.advance(1);await o.send([event('thinking','helper',{parentId:'main',ts:o.at()})]);
+  const restored=o.state.snapshot().workers.find(w=>w.parentId);assert.ok(restored);assert.equal(restored.status,'thinking');assert.deepEqual(restored.plan,plan);
+});
+
+test('helper approval/continuation waits and parents supervising busy descendants do not disappear',async t=>{
+  const o=await timedOffice(t),ids=['main','approval','continuation','supervisor','nested'];
+  await o.send([event('session_start'),event('subagent_start','approval',{parentId:'main'}),event('waiting','approval',{parentId:'main',summary:'Awaiting approval'}),
+    event('subagent_start','continuation',{parentId:'main'}),event('waiting','continuation',{parentId:'main',summary:'Awaiting helper work'}),
+    event('subagent_start','supervisor',{parentId:'main'}),event('waiting','supervisor',{parentId:'main'}),
+    event('subagent_start','nested',{parentId:'supervisor'}),event('tool_start','nested',{parentId:'supervisor',tool:'read'})]);
+  o.advance(30000);await o.send([],ids);o.advance(31000);await o.send([],ids);
+  assert.equal(o.state.snapshot().workers.length,5);
+  await o.send([event('waiting','nested',{parentId:'supervisor',summary:'Awaiting continuation',ts:o.at()})]);
+  o.advance(30000);await o.send([],ids);o.advance(31000);await o.send([],ids);assert.equal(o.state.snapshot().workers.length,5);
 });

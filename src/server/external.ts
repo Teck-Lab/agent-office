@@ -2,7 +2,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { cleanOrchestration, type Host, type RawEvent } from '../shared/events.ts';
+import { cleanOrchestration, nativeFamilyIds, type WorkerState, type Host, type RawEvent } from '../shared/events.ts';
 import type { OfficeState } from './state.ts';
 import { cleanPlan } from '../shared/plan.ts';
 import { scrubText } from '../ingest/redact.ts';
@@ -17,19 +17,37 @@ const label = (v: unknown, limit = 64) => typeof v === 'string' ? v.replace(/[\x
 type Source = { token: string; project: string; host: Host };
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-export function createExternalIngest(configPath: string, state: OfficeState) {
+export function createExternalIngest(configPath: string, state: OfficeState, options: {
+  now?:()=>number; schedule?:typeof setInterval; cancel?:typeof clearInterval;
+} = {}) {
   const seen = new Map<string, number>();
   const active = new Map<string, { at: number; event: RawEvent }>();
-  const now = () => Date.now();
+  // Older loaded OMP observers heartbeat warm/finished helpers indefinitely.
+  // Dormancy is presentation-only; a real new turn can reuse the same identity.
+  const dormant = new Map<string,{at:number; parkedAt:number; state:WorkerState; event:RawEvent}>();
+  const now = options.now ?? Date.now;
+  const activeKinds = new Set(['session_start','subagent_start','prompt','thinking','tool_start','tool_end','reply','error','test_pass','test_fail']);
+  const protectedWaits = new Set(['Awaiting approval','Awaiting helper work','Awaiting continuation']);
   const sweep = () => {
     const time = now();
     for (const [id, worker] of active) if (time - worker.at > 60_000) {
       state.ingest({ ...worker.event, ts: new Date(time).toISOString(), kind: worker.event.parentId ? 'subagent_end' : 'session_end' });
       active.delete(id);
     }
+    const workers = state.snapshot().workers, byId = new Map(workers.map(w=>[w.workerId,w]));
+    for(const [id, worker] of active){
+      const w=byId.get(id);
+      if(!w?.parentId || w.status!=='waiting' || protectedWaits.has(w.summary??'') || time-Date.parse(w.lastTs)<60_000)continue;
+      const children=nativeFamilyIds(id,workers).slice(1);
+      if(children.some(childId=>{const c=byId.get(childId);return c&&c.status!=='subagent_end'&&c.status!=='session_end'&&
+        (protectedWaits.has(c.summary??'')||time-Date.parse(c.lastTs)<60_000||!['waiting','idle'].includes(c.status));}))continue;
+      state.ingest({...worker.event,kind:'subagent_end',ts:new Date(time).toISOString()});
+      active.delete(id);dormant.set(id,{at:time,parkedAt:time,state:w,event:worker.event});
+    }
+    for(const [id,worker] of dormant)if(time-worker.at>60_000)dormant.delete(id);
     for (const [id, at] of seen) if (time - at > 120_000) seen.delete(id);
   };
-  const timer = setInterval(sweep, 5000); timer.unref?.();
+  const timer = (options.schedule??setInterval)(sweep, 5000); timer.unref?.();
   const reply = (res: ServerResponse, code: number, message: string) => {
     res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ message }));
@@ -47,7 +65,7 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
     } catch { return; }
   }
   return {
-    close() { clearInterval(timer); },
+    close() { (options.cancel??clearInterval)(timer); },
     async handle(req: IncomingMessage, res: ServerResponse) {
       if (req.method !== 'POST') return reply(res, 405, 'POST required');
       if (req.headers.origin || req.headers['sec-fetch-site']) return reply(res, 403, 'Producer requests only');
@@ -108,7 +126,19 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
         if (seen.has(id)) continue;
         if (seen.size >= 10_000) seen.delete(seen.keys().next().value!);
         seen.set(id, now());
-        if (!active.has(event.workerId) && active.size >= 1024) continue;
+        const sleeping=dormant.get(event.workerId);
+        if(sleeping){
+          sleeping.at=now();
+          if(event.kind==='session_end'||event.kind==='subagent_end'){dormant.delete(event.workerId);continue;}
+          if(!activeKinds.has(event.kind)||Date.parse(event.ts)<=sleeping.parkedAt){
+            if(event.plan!==undefined)sleeping.state.plan=event.plan;
+            if(event.tokenTotal!==undefined)sleeping.state.tokens=Math.max(sleeping.state.tokens,event.tokenTotal);
+            continue;
+          }
+          dormant.delete(event.workerId);
+          state.ingest({...event,kind:'subagent_start',plan:event.plan??sleeping.state.plan,tokenTotal:event.tokenTotal??sleeping.state.tokens});
+        }
+        if (!active.has(event.workerId) && active.size+dormant.size >= 1024) continue;
         state.ingest(event);
         if (event.kind === 'session_end' || event.kind === 'subagent_end') active.delete(event.workerId);
         else active.set(event.workerId, { at: now(), event });
@@ -117,6 +147,7 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
       for (const id of (packet.heartbeat ?? []) as string[]) {
         const key = `external:${sourceId}:${id}`, worker = active.get(key);
         if (worker) { worker.at = now(); live.push(key); }
+        else {const sleeping=dormant.get(key);if(sleeping)sleeping.at=now();}
       }
       state.heartbeat(live);
       const current = packet.wantSnapshot === true ? state.snapshot() : undefined;
@@ -124,7 +155,7 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
         workers: current.workers.filter(w => w.host?.kind === 'docker-sandbox' && w.host.id === sourceId),
         recent: current.recent.filter(e => e.host?.kind === 'docker-sandbox' && e.host.id === sourceId).slice(-100) } : undefined;
       res.writeHead(202, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ accepted: true, missing: ((packet.heartbeat ?? []) as string[]).filter(id => !active.has(`external:${sourceId}:${id}`)), ...(snapshot ? { snapshot } : {}) }));
+      res.end(JSON.stringify({ accepted: true, missing: ((packet.heartbeat ?? []) as string[]).filter(id => !active.has(`external:${sourceId}:${id}`)&&!dormant.has(`external:${sourceId}:${id}`)), ...(snapshot ? { snapshot } : {}) }));
     },
   };
 }

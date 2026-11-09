@@ -356,6 +356,12 @@ export class Crew {
       w = this.spawn(e, now, true);
       if (e.parentId && e.kind !== "subagent_start") this.parentPoints(e.parentId, now);
     }
+    if(e.kind==='subagent_start'&&w.leaving){
+      // A native helper may be reused before its walk-out animation finishes.
+      w.leaving=false;w.gone=false;w.carrying=false;w.leaveAt=0;w.leaveRoute=[];
+      w.path=[];w.onArrive=undefined;w.walking=false;w.toSeat=false;w.tp=null;
+      w.x=w.seat.x;w.y=w.seat.y;w.seated=true;w.stand=0;w.alpha=1;
+    }
     if (e.orchestration !== undefined) {
       const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
       w.orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;

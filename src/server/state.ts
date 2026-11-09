@@ -369,7 +369,7 @@ export class OfficeState {
       version: 1,
       startedAt: this.startedAt,
       demo: this.demo,
-      workers: [...this.workers.values()].map((w) => ({ ...w.state })),
+      workers: [...this.workers.values()].filter(w=>w.removeAt===undefined).map((w) => ({ ...w.state })),
       recent: this.recent(),
     };
   }

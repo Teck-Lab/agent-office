@@ -276,7 +276,7 @@ test("subagent_end keeps the intern for a short grace, then removes it silently"
   state.ingest(ev({ workerId: "a1", parentId: "s1", kind: "subagent_start", role: "Plan" }));
   state.ingest(ev({ workerId: "a1", parentId: "s1", kind: "subagent_end" }));
   assert.equal(state.ingest(ev({ workerId: "a1", parentId: "s1", kind: "subagent_end" })), null, "duplicate end dropped");
-  assert.equal(state.snapshot().workers.find((w) => w.workerId === "a1").status, "subagent_end");
+  assert.equal(state.snapshot().workers.find((w) => w.workerId === "a1"), undefined, "reconnecting clients must not respawn an already-ended intern");
   const n = seen.length;
   advance(INTERN_GRACE_MS + 1);
   assert.equal(state.size, 1);
