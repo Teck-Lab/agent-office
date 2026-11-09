@@ -8,9 +8,9 @@ import {WALL_H} from './layout.ts';
 export const MEETING_BAY=164;
 export function withMeetingBay(main:Rect):Rect{return {...main,x:main.x-MEETING_BAY,w:main.w+MEETING_BAY};}
 /** An enclosed meeting bay with an office-facing doorway. */
-export function meetingRoom(main:Rect):Rect{return {x:main.x-MEETING_BAY+4,y:4,w:156,h:194};}
-export function meetingTable(room:Rect):Rect{return {x:room.x+28,y:WALL_H+34,w:100,h:40};}
-export function meetingSeats(room:Rect){return Array.from({length:8},(_,i)=>({x:room.x+42+(i%4)*24,y:WALL_H+(i<4?20:88),dir:i<4?'down' as const:'up' as const}));}
+export function meetingRoom(main:Rect):Rect{return {x:main.x-MEETING_BAY,y:4,w:MEETING_BAY,h:194};}
+export function meetingTable(room:Rect):Rect{return {x:room.x+32,y:WALL_H+34,w:100,h:40};}
+export function meetingSeats(room:Rect){return Array.from({length:8},(_,i)=>({x:room.x+46+(i%4)*24,y:WALL_H+(i<4?20:88),dir:i<4?'down' as const:'up' as const}));}
 export function drawMeetingWalls(g:CanvasRenderingContext2D,room:Rect){
  const bottom=room.y+room.h,right=room.x+room.w-12;
  glassPartition(g,room.x,0,bottom);

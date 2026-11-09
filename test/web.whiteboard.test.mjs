@@ -31,6 +31,8 @@ test('the plan shares the original TV while meeting windows occupy the former bo
  for(const w of [240,330,500,1000]){
    const main={x:0,y:0,w,h:198},p=roomPlan(main,null,main);
    assert.equal(p.whiteboard,undefined,'no second wall-mounted board');
+   assert.equal(p.meeting.x,p.main.x,'meeting wall is flush with the outer office boundary');
+   assert.equal(p.meeting.x+p.meeting.w,main.x,'meeting partition meets the original office boundary');
    assert.ok(p.meeting.x+p.meeting.w<p.elevator.x);assert.ok(p.meeting.y+p.meeting.h<=main.h);
    assert.equal(p.tv.y,10);assert.equal(p.tv.w,w>=460?132:100);assert.ok(p.tv.y+p.tv.h<WALL_H);
    assert.equal(p.elevator.x,main.x+12);assert.equal(p.main.x+p.main.w,main.x+main.w);assert.equal(p.room.x,p.main.x);
