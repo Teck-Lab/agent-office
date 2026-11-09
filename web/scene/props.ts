@@ -402,6 +402,32 @@ export function chair(g: G, cx: number, cy: number, key: ArtKey, empty: boolean)
   r(g, cx - 7, by + 1, 1, 4, dk(main, 0.6)); r(g, cx + 6, by + 1, 1, 4, dk(main, 0.6));
 }
 
+/** Front-facing office chair: upright back, visible cushion and wheels below. */
+export function chairFront(g: G, cx: number, cy: number, key: ArtKey, empty: boolean) {
+  const [main, acc] = art(key).chair;
+  const edge = dk(main, 0.6);
+  // Keep the same ground plane and lighting as the rear-view office chair.
+  r(g, cx - 1, cy - 1, 2, 4, C.slate2);
+  r(g, cx - 5, cy + 2, 10, 1, C.slate2);
+  r(g, cx - 5, cy + 3, 1, 1, C.ink2); r(g, cx + 4, cy + 3, 1, 1, C.ink2); r(g, cx, cy + 3, 1, 1, C.ink2);
+  // The backrest rises behind the sitter; it is not a rotated rear-view sprite.
+  r(g, cx - 5, cy - 15, 10, 9, edge);
+  r(g, cx - 6, cy - 14, 12, 7, edge);
+  r(g, cx - 5, cy - 14, 10, 7, main);
+  r(g, cx - 4, cy - 14, 8, 1, lt(main, 0.2));
+  r(g, cx - 4, cy - 13, 8, 1, acc);
+  r(g, cx - 4, cy - 8, 8, 1, dk(main, 0.4));
+  // Seat projects toward the table, with an upholstered front lip.
+  r(g, cx - 5, cy - 5, 10, 5, edge);
+  if (empty) r(g, cx - 4, cy - 5, 8, 3, mix(main, C.slate3, 0.25));
+  r(g, cx - 4, cy - 2, 8, 1, main);
+  r(g, cx - 4, cy - 1, 8, 1, dk(main, 0.4));
+  // Upright arm supports and highlighted arm pads.
+  r(g, cx - 6, cy - 5, 1, 5, C.slate2); r(g, cx + 5, cy - 5, 1, 5, C.slate2);
+  r(g, cx - 7, cy - 6, 3, 2, edge); r(g, cx + 4, cy - 6, 3, 2, edge);
+  r(g, cx - 7, cy - 6, 3, 1, C.slate3); r(g, cx + 4, cy - 6, 3, 1, C.slate3);
+}
+
 export function stool(g: G, cx: number, cy: number, key: ArtKey) {
   const seat = art(key).stool;
   r(g, cx - 1, cy - 2, 2, 4, C.slate2);

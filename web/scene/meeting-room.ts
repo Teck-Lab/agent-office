@@ -2,7 +2,7 @@ import type {Rect} from './room.ts';
 import type {OfficeMeeting} from '../../src/shared/meetings.ts';
 import {drawText,fit,MICRO,measure} from './font.ts';
 import {glassPartition,glassRail} from './partitions.ts';
-import {chair} from './props.ts';
+import {chair,chairFront} from './props.ts';
 import {C} from './palette.ts';
 import {WALL_H} from './layout.ts';
 export const MEETING_BAY=164;
@@ -25,8 +25,8 @@ export function drawMeetingRoom(g:CanvasRenderingContext2D,room:Rect,m:OfficeMee
  box(room.x+5,WALL_H,room.w-10,room.y+room.h-WALL_H-4,ascii?'#171827':'#566257');
  box(room.x+9,WALL_H+4,room.w-18,room.y+room.h-WALL_H-12,ascii?'#111322':'#637162');
  for(const [i,p]of meetingSeats(room).entries()){
-   g.save();g.translate(p.x,p.y);g.rotate(p.dir==='down'?Math.PI:0);
-   chair(g,0,0,'omp',!m||i>=m.participants.length);g.restore();
+   const drawChair=p.dir==='down'?chairFront:chair;
+   drawChair(g,p.x,p.y,'omp',!m||i>=m.participants.length);
  }
  const t=meetingTable(room),{x,y,w,h}=t;
  box(x+3,y+4,w,h,C.wood1);box(x,y,w,h,C.wood3);box(x+2,y+2,w-4,h-4,C.wood5);
