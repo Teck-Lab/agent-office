@@ -142,6 +142,16 @@ const OFFLINE = /^remote offline/i;
 export interface DrawCall { y: number; fn: (g: CanvasRenderingContext2D) => void }
 
 export class Crew {
+  private meetingPositions=new Map<string,{x:number;y:number;dir:Dir}>();
+  setMeeting(meeting:import('../../src/shared/meetings.ts').OfficeMeeting|null,seats:{x:number;y:number;dir:Dir}[]){
+    const next=new Map<string,{x:number;y:number;dir:Dir}>();
+    for(const [i,id] of (meeting?.participants??[]).entries()){
+      const w=this.workers.get(id);if(w&&!w.intern&&!w.parentId&&!w.leaving&&seats[i])next.set(id,seats[i]);
+    }
+    for(const [id] of this.meetingPositions)if(!next.has(id)){const w=this.workers.get(id);if(w&&!w.leaving){w.x=w.seat.x;w.y=w.seat.y;w.seated=true;w.path=[];w.walking=false;w.stand=0;}}
+    this.meetingPositions=next;
+  }
+
   workers = new Map<string, Worker>();
   layout = new Layout();
   fx = new Fx();
@@ -334,6 +344,7 @@ export class Crew {
   }
 
   apply(e: OfficeEvent) {
+    if(e.kind === "meeting")return;
     const now = this.now();
     // a remote that dropped: dim its pod, never spawn a worker for the notice
     if (e.host && isRemote(e.host)) {
@@ -651,6 +662,8 @@ export class Crew {
           w.gone = true;
         });
       }
+      const meeting=this.meetingPositions.get(w.id);
+      if(meeting&&!w.leaving){w.x=meeting.x;w.y=meeting.y;w.dir=meeting.dir;w.path=[];w.walking=false;w.toSeat=false;w.seated=false;w.stand=0;w.alpha=1;w.tp=null;continue;}
       if (w.walking) this.step(w, s);
       const standing = w.walking || !w.seated || w.act === "waiting" || (w.show && w.show.kind !== "alarm" && this.showStanding(w, now));
       w.stand = clamp(w.stand + (standing ? 1 : -1) * s * 6, 0, 1);
@@ -782,6 +795,8 @@ export class Crew {
   }
 
   pose(w: Worker, now: number): { pose: Pose; dir: Dir; frame: number } {
+    const meeting=this.meetingPositions.get(w.id);
+    if(meeting&&!w.leaving)return {pose:'sit',dir:meeting.dir,frame:0};
     const sh = w.show;
     if (w.walking || (w.path.length && !w.seated)) {
       const frame = Math.floor(w.walkDist / 4) & 3;

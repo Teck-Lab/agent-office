@@ -92,3 +92,32 @@ real new activity makes the helper return. Metadata updates do not wake it.
 Parents supervising busy descendants remain visible, as do top-level sessions.
 Reconnect snapshots exclude helpers already departing. Fast reuse cancels the
 old departure animation, keeping the same native parent and worker identity.
+
+
+## Explicit meeting room
+
+The annex left of the elevator is a conference room with its existing native
+goal/task whiteboard inside. A table seats up to eight main sessions. Use the
+Meeting room button or click the room to read the agenda, decision, attendees and
+native whiteboard. A selector switches between simultaneous meetings.
+
+The identity-aware OMP MCP adapter exposes office_meeting with list, start, join,
+update, leave and end. Actions are delivered as a structured result to the owning
+observer, which publishes a meeting event with nativeKind=main. The server requires
+an existing, live main-session record with the same exact worker id and source.
+Subagents, including orphan helpers, cannot participate. The tool accepts no target
+worker or participants argument; other main sessions explicitly join themselves.
+Only the host updates or ends a meeting. Its session ending also ends the meeting;
+departing guests are removed. A main session can host one meeting, a source can
+have four meetings, and each session can attend one. Meeting ids are source-scoped.
+
+Snapshots include meetings; accepted meeting/end events carry the current list for
+SSE clients. Source-scoped MCP snapshots reveal only that source's meetings. Replay
+deduplication applies before meeting actions. Meeting title, agenda and decision
+are short, scrubbed public text. A queued MCP request is not attendance proof:
+list reads back accepted membership. The standalone generic MCP reports that an
+identity-aware adapter is required for actions instead of guessing a session by cwd.
+
+Meeting positions are presentation only: real execution host, desk allocation,
+subagent seats, task state, goals and Orca coordination remain unchanged. Native
+helpers keep the other Office tools. A meeting adds no dispatch or completion gate.

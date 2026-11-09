@@ -21,6 +21,8 @@ import { Ascii } from "./ascii.ts";
 import { furnitureFigures, workerFigures } from "./figures.ts";
 import { Crt } from "./crt.ts";
 import * as R from "./room.ts";
+import {drawMeetingRoom,meetingRoom,meetingSeats} from './meeting-room.ts';
+import type {OfficeMeeting} from '../../src/shared/meetings.ts';
 import {drawWhiteboard,type WhiteboardSummary} from "./whiteboard.ts";
 import * as P from "./props.ts";
 import { DESK_W, POD_H, WALL_H, deskTop } from "./layout.ts";
@@ -87,8 +89,10 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   let crtOn = false;
   let hourOverride: number | null = null;
   let weather: "clear" | "rain" | null = null;
+  let meetings:OfficeMeeting[]=[],meetingKey='';
+  const activeMeeting=()=>meetings.find(m=>m.sourceId+':'+m.id===meetingKey)??meetings[0]??null;
   let boardSummary:WhiteboardSummary|null=null, boardCb:(()=>void)|null=null;
-  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y),r=plan.whiteboard;return wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h;};
+  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y),r=meetingRoom(plan.whiteboard);return wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h;};
   let selectCb: ((id: string | null) => void) | null = null;
   let hoverCb: ((id: string | null) => void) | null = null;
   let labelBoxes: { x: number; y: number; w: number; h: number; id?: string }[] = [];
@@ -354,6 +358,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, -3, room.w + 4, 3);
     }
     R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass);
+    drawMeetingRoom(wg,plan.whiteboard,activeMeeting(),asciiPass);
     drawWhiteboard(wg,plan.whiteboard,boardSummary,asciiPass);
     const el = plan.elevator;
     if (!asciiPass) {
@@ -481,6 +486,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     clock += dtw;
     const t0 = performance.now();
     if (crew.layout.version !== layoutVersion) rebuild();
+    crew.setMeeting(activeMeeting(),meetingSeats(plan.whiteboard));
     crew.update(dtw);
     if (crew.layout.version !== layoutVersion) rebuild();
     crew.showFx(clock, (amt) => {
@@ -792,10 +798,12 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   const scene: OfficeSceneExtras = {
     canvas,
     load(snapshot: Snapshot) {
+      meetings=snapshot.meetings??[];
       crew.load(snapshot);
       if (crew.selected && !crew.workers.has(crew.selected)) crew.selected = null;
     },
     apply(event: OfficeEvent) {
+      if(event.meetings)meetings=event.meetings;
       const was = event.replaces;
       crew.apply(event);
       // a hired worker renamed to its real session: the camera keeps following it
@@ -818,6 +826,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     setDirector(on: boolean) {
       director = !!on;
     },
+    setMeetingSelection(key){meetingKey=key;},
     setWhiteboard(summary){boardSummary=summary;},
     onWhiteboard(cb){boardCb=cb;},
     onSelect(cb) {

@@ -43,7 +43,7 @@ export interface HostSummary {
 
 const HISTORY = 12;
 /** Events an agent sends through MCP alongside its work; they never change what it is doing. */
-const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage", "plan"]);
+const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage", "plan", "meeting"]);
 const OFFLINE = /^remote offline/i;
 const isRemote = (h?: Host): h is Host => !!h && h.kind !== "local";
 
@@ -184,7 +184,7 @@ export class OfficeModel {
         const child = this.workers.get(id)!; child.orchestration = w.orchestration; child.placement = w.placement;
       }
     }
-    if(e.kind!=="plan")w.lastTs = e.ts;
+    if(e.kind!=="plan"&&e.kind!=="meeting")w.lastTs = e.ts;
     if (e.kind === "status") w.mood = moodOf(e) || undefined;
     if (e.kind !== "tool_end" && !SIGNALS.has(e.kind)) w.status = e.kind;
     if (e.kind === "tool_start") {
@@ -246,7 +246,7 @@ export class OfficeModel {
 }
 
 function push(w: Worker, e: OfficeEvent): void {
-  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "plan" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
+  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "plan" || e.kind === "meeting" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
   w.history.push({
     seq: e.seq,
     ts: parseTs(e.ts),

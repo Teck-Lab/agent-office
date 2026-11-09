@@ -21,6 +21,7 @@
  */
 import { cleanPlan } from '../shared/plan.ts';
 import { homedir } from "node:os";
+import {Meetings,cleanMeeting} from "../shared/meetings.ts";
 import { foldPrivate } from "../ingest/presence.ts";
 import {
   cleanOrchestration, nativeFamilyIds,
@@ -47,7 +48,7 @@ const HOSTS = new Set<HostKind>(["docker-sandbox", "local", "ssh", "daytona", "b
 const KINDS = new Set<EventKind>([
   "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "plan", "usage", "waiting",
   "test_fail", "test_pass", "error", "subagent_start", "subagent_end", "idle", "session_end",
-  "status", "shout", "celebrate", "flip",
+  "status", "shout", "celebrate", "flip", "meeting",
 ]);
 /** Sent by the agent itself (MCP): only for workers already in the office, and they leave the pose alone. */
 const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "flip"]);
@@ -99,6 +100,7 @@ interface Worker {
 }
 
 export class OfficeState {
+  private readonly meetings = new Meetings();
   readonly demo: boolean;
   readonly startedAt: string;
   private readonly now: () => number;
@@ -144,6 +146,11 @@ export class OfficeState {
     }
     let w = this.workers.get(e.workerId);
 
+    if(e.kind === "meeting"){
+      if(!w || w.removeAt !== undefined || w.state.parentId || w.state.nativeKind!=="main" || e.nativeKind!=="main" || !e.host || !e.meeting)return null;
+      if(!this.meetings.apply(e.host.id,e.workerId,e.meeting,e.ts))return null;
+      return this.publish({...e,meetings:this.meetings.snapshot()});
+    }
     if (!w) {
       if (ENDINGS.has(e.kind) || SIGNALS.has(e.kind)) return null;
       const from = e.parentId || isPlaceholder(e.workerId) ? undefined : e.replaces ?? this.claim(e);
@@ -370,6 +377,7 @@ export class OfficeState {
       startedAt: this.startedAt,
       demo: this.demo,
       workers: [...this.workers.values()].filter(w=>w.removeAt===undefined).map((w) => ({ ...w.state })),
+      meetings: this.meetings.snapshot(),
       recent: this.recent(),
     };
   }
@@ -386,6 +394,7 @@ export class OfficeState {
   /** Empty the office (the demo starting over for a new viewer). Sequence numbers keep counting. */
   reset(): void {
     this.workers.clear();
+    this.meetings.clear();
     this.ring.fill(undefined);
     this.ringHead = this.ringSize = 0;
   }
@@ -448,6 +457,7 @@ export class OfficeState {
 
   private merge(w: Worker, e: RawEvent): void {
     const s = w.state;
+    if(e.nativeKind && !s.nativeKind)s.nativeKind=e.nativeKind;
     if (e.host) s.host = e.host;
     if (e.placement) s.placement = e.placement;
     if (e.orchestration !== undefined) {
@@ -512,6 +522,8 @@ export class OfficeState {
       if (child.removeAt === undefined) this.publish({ ...this.base(child, e.ts), kind: "subagent_end" });
     }
     this.workers.delete(id);
+    this.meetings.remove(id);
+    e.meetings=this.meetings.snapshot();
     w.state.status = e.kind;
     w.state.lastTs = e.ts;
     return this.publish(e);
@@ -570,6 +582,8 @@ export class OfficeState {
       e.placement = e.orchestration?.role === "coordinator" ? "office" : "cloud";
     }
     if (raw.plan !== undefined) e.plan = cleanPlan(raw.plan);
+    if(raw.nativeKind === "main" || raw.nativeKind === "sub")e.nativeKind=raw.nativeKind;
+    if(raw.kind === "meeting"){const command=cleanMeeting(raw.meeting);if(!command)return null;e.meeting=command;}
     const parentId = clean(raw.parentId, ID_MAX);
     if (parentId && parentId !== workerId) e.parentId = parentId;
     // Remote paths are shown as they are: "~" would be this machine's home.

@@ -7,6 +7,7 @@
  * ends up on a screen that might be recorded.
  */
 import { SUMMARY_MAX, type AgentKind, type AgentSignal } from "../shared/events.ts";
+import {cleanMeeting} from '../shared/meetings.ts';
 import { scrubText } from "../ingest/redact.ts";
 import type { Cooldown, Outbox } from "./outbox.ts";
 import { buildPeers } from "./peers.ts";
@@ -27,6 +28,7 @@ const TEXT_PROP = (what: string) => ({
 });
 
 export const TOOLS: ToolDef[] = [
+{"name":"office_meeting","title":"Meeting room","description":"List, start, join, update, leave or end a visual meeting. Main sessions only; native helpers stay at their desks. Invite through existing coordination; each participant joins itself. Only the host updates or ends it. Display only: never a planning or review gate.","inputSchema":{"type":"object","properties":{"action":{"type":"string","enum":["list","start","join","update","leave","end"]},"id":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"},"title":{"type":"string","maxLength":200},"agenda":{"type":"string","maxLength":200},"decision":{"type":"string","maxLength":200}},"required":["action"],"additionalProperties":false},"annotations":{"readOnlyHint":false,"destructiveHint":false,"openWorldHint":false}},
   {
     name: "office_status",
     title: "Set your office status",
@@ -155,6 +157,7 @@ export interface ToolContext {
   identity(): { agent?: AgentKind; client?: string };
   /** Port of the running office, or null. */
   findOffice(): Promise<number | null>;
+  meeting?(command: import('../shared/meetings.ts').MeetingCommand): ToolResult;
   fetchSnapshot(port: number): Promise<import("../shared/events.ts").Snapshot | null>;
 }
 
@@ -179,6 +182,16 @@ function secs(ms: number): string {
 export function createHandlers(ctx: ToolContext): Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> {
   const statusTimes: number[] = [];
   return {
+    async office_meeting(args){
+      if(args.action==='list'){
+        const port=await ctx.findOffice(),snap=port===null?null:await ctx.fetchSnapshot(port);
+        if(!snap)return {text:'Office unavailable; carry on with work.',isError:true};
+        return {text:JSON.stringify({meetings:snap.meetings??[],mainSessions:snap.workers.filter(w=>!w.parentId&&w.nativeKind==='main').map(w=>({workerId:w.workerId,role:w.role,run:w.orchestration?.runId}))})};
+      }
+      const command=cleanMeeting(args);
+      if(!command)return {text:'Use a valid action and short id; start also needs a title.',isError:true};
+      return ctx.meeting?.(command)??{text:'Meeting actions require the identity-aware OMP adapter.',isError:true};
+    },
     async office_status(args) {
       const text = scrubText(args.text);
       if (!text) return { text: 'office_status needs a short "text", e.g. "Writing the migration".', isError: true };

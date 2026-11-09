@@ -48,10 +48,18 @@ test('whiteboard opens, switches coordinators, renders safe text and retains sel
   let chosen;const ui=createWhiteboard({onChoose:id=>chosen=id});
   const a=worker('a','run-a','coordinator',{plan}),b=worker('b','run-b','coordinator',{plan:{goal:goal('Second'),phases:[]}});
   ui.update([a,b]);ui.show();assert.equal(ui.isOpen(),true);assert.match(text(ui.el),/Delivery/);assert.match(text(ui.el),/Needs backup/);
-  const select=ui.el.children.find(n=>n.tagName==='SELECT');select.value='b';select.handlers.change[0]();assert.equal(chosen,'b');assert.match(text(ui.el),/Second/);
+  const select=ui.el.children.find(n=>n.tagName==='SELECT'&&n.attrs['aria-label']==='Orchestrator whiteboard');select.value='b';select.handlers.change[0]();assert.equal(chosen,'b');assert.match(text(ui.el),/Second/);
   assert.equal(ui.update([a,b]).owner.workerId,'b');
   ui.update([a]);assert.equal(select.value,'a');assert.match(text(ui.el),/Delivery/);
   ui.update([]);assert.match(text(ui.el),/No connected orchestrator/);ui.hide();assert.equal(ui.isOpen(),false);
   const malicious=worker('unsafe','run-x','coordinator',{plan:{goal:goal('<img src=x onerror=alert(1)>'),phases:[]}});
   ui.update([malicious]);ui.show();assert.match(text(ui.el),/<img src=x onerror=alert\(1\)>/,'displayed as a text node, never markup');
+});
+
+test('the meeting room dialog safely renders agenda, decisions and exact main participants',()=>{
+ globalThis.HTMLElement=Node;globalThis.document={createElement:tag=>new Node(tag),activeElement:null};
+ let selected;const ui=createWhiteboard({onChoose(){},onMeeting:key=>selected=key}),w=worker('main-12345678','run-a','coordinator');
+ ui.update([w]);const meetings=[{id:'handoff',sourceId:'sandbox',ownerId:w.workerId,title:'<script>Meeting</script>',agenda:'Confirm contract',decision:'Tests before acceptance',participants:[w.workerId],updatedAt:new Date().toISOString()}];
+ assert.equal(ui.setMeetings(meetings),'sandbox:handoff');ui.show();assert.match(text(ui.el),/Confirm contract/);assert.match(text(ui.el),/Tests before acceptance/);assert.match(text(ui.el),/coordinator/);assert.match(text(ui.el),/host/);
+ assert.ok(!ui.el.children.some(n=>n.tagName==='SCRIPT'));ui.setMeetings([]);assert.match(text(ui.el),/No meeting in progress/);
 });

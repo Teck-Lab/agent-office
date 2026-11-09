@@ -1,19 +1,37 @@
+import type {OfficeMeeting} from '../../src/shared/meetings.ts';
 import type { WorkerState } from '../../src/shared/events.ts';
 import { boardViews, type BoardView } from './whiteboard-model.ts';
 import { h } from './dom.ts';
-export function createWhiteboard(opts: {onChoose:(id:string)=>void}) {
+export function createWhiteboard(opts: {onMeeting?:(key:string)=>void;onChoose:(id:string)=>void}) {
   let views:BoardView[]=[], selected='', fingerprint='', pickerKey='', restoreFocus:HTMLElement|null=null;
   const picker=h('select',{attrs:{'aria-label':'Orchestrator whiteboard'},on:{change:()=>{selected=picker.value;opts.onChoose(selected);render();}}});
-  const heading=h('h2',{text:'Team whiteboard',attrs:{id:'whiteboard-title'}});
+  const heading=h('h2',{text:'Meeting room & whiteboard',attrs:{id:'whiteboard-title'}});
+  let meetings:OfficeMeeting[]=[],meetingSelected='';
+  let known=new Map<string,WorkerState>();
+  const meetingBody=h('section',{class:'wb-meeting',attrs:{'aria-label':'Meeting agenda'}});
+  const meetingPicker=h('select',{attrs:{'aria-label':'Meeting'},on:{change:()=>{meetingSelected=meetingPicker.value;renderMeetings();opts.onMeeting?.(meetingSelected);}}});
+  function renderMeetings(){
+    meetingPicker.replaceChildren(...meetings.map(m=>h('option',{text:m.title,attrs:{value:m.sourceId+':'+m.id}})));
+    if(!meetings.some(m=>m.sourceId+':'+m.id===meetingSelected))meetingSelected=meetings[0]?meetings[0].sourceId+':'+meetings[0].id:'';
+    meetingPicker.value=meetingSelected;meetingPicker.hidden=meetings.length<2;meetingBody.replaceChildren();
+    const m=meetings.find(m=>m.sourceId+':'+m.id===meetingSelected);
+    meetingBody.append(h('h3',{text:m?.title??'No meeting in progress'}));
+    if(!m){meetingBody.append(h('p',{class:'wb-note',text:'Main sessions can start or join through office_meeting. Native helpers stay at their desks.'}));return;}
+    if(m.agenda)meetingBody.append(h('p',{text:m.agenda}));
+    if(m.decision)meetingBody.append(h('p',{class:'wb-decision',text:'Decision: '+m.decision}));
+    meetingBody.append(h('p',{class:'wb-note',text:m.participants.length+' / 8 main sessions · Meeting '+m.id}));
+    for(const id of m.participants){const w=known.get(id),issue=w?.orchestration?.issue?.split('/').at(-1);
+      meetingBody.append(h('div',{class:'wb-attendee',text:(w?.orchestration?.role??w?.role??'OMP')+(issue?' · #'+issue:'')+' · '+id.slice(-8)+(id===m.ownerId?' · host':''),attrs:{title:id}}));}
+  }
   const body=h('div',{class:'wb-body'});
   const close=h('button',{class:'wb-close',text:'Close',attrs:{type:'button'},on:{click:()=>hide()}});
   const el=h('dialog',{class:'whiteboard-dialog',attrs:{'aria-labelledby':'whiteboard-title'}},
-    h('header',{class:'wb-header'},h('div',null,h('span',{class:'wb-kicker',text:'OMP · LIVE PLAN'}),heading),close),picker,body);
+    h('header',{class:'wb-header'},h('div',null,h('span',{class:'wb-kicker',text:'OMP · LIVE PLAN'}),heading),close),meetingPicker,meetingBody,picker,body);
   const tab=h('button',{class:'whiteboard-tab',attrs:{type:'button','aria-haspopup':'dialog'},on:{click:()=>show()}},
-    h('span',{class:'wb-tab-icon',text:'▤',attrs:{'aria-hidden':'true'}}),h('span',{text:'Whiteboard'}));
+    h('span',{class:'wb-tab-icon',text:'▤',attrs:{'aria-hidden':'true'}}),h('span',{text:'Meeting room'}));
   el.addEventListener('close',()=>{tab.setAttribute('aria-expanded','false');restoreFocus?.focus();});
   el.addEventListener('click',e=>{if(e.target===el){const r=el.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)hide();}});
-  function show(){restoreFocus=document.activeElement instanceof HTMLElement?document.activeElement:tab;render();if(!el.open)el.showModal();tab.setAttribute('aria-expanded','true');}
+  function show(){restoreFocus=document.activeElement instanceof HTMLElement?document.activeElement:tab;renderMeetings();render();if(!el.open)el.showModal();tab.setAttribute('aria-expanded','true');}
   function hide(){if(el.open)el.close();}
   function issue(url?:string){return url&&/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/[1-9]\d*$/.test(url)?h('a',{text:'#'+url.split('/').at(-1),attrs:{href:url,target:'_blank',rel:'noopener noreferrer'}}):null;}
   function render(){
@@ -48,6 +66,6 @@ export function createWhiteboard(opts: {onChoose:(id:string)=>void}) {
     if(!view.workers.length)assignments.append(h('p',{class:'wb-empty',text:'No connected worker assignments for this Run.'}));
     body.append(assignments,h('p',{class:'wb-note',text:'Read-only view · OMP owns goals/todos · Orca owns assignments · GitHub issue links open separately.'}));
   }
-  return {el,tab,show,hide,update(workers:Iterable<WorkerState>){views=boardViews(workers);if(!views.some(v=>v.owner.workerId===selected))selected=views[0]?.owner.workerId??'';
+  return {el,tab,show,hide,setMeetings(next:OfficeMeeting[]){meetings=next;renderMeetings();return meetingSelected;},update(workers:Iterable<WorkerState>){const all=[...workers];known=new Map(all.map(w=>[w.workerId,w]));views=boardViews(all);if(el.open)renderMeetings();if(!views.some(v=>v.owner.workerId===selected))selected=views[0]?.owner.workerId??'';
     tab.dataset.empty=String(!views.length);tab.title=views.length+' connected orchestrator'+(views.length===1?'':'s');if(el.open)render();return views.find(v=>v.owner.workerId===selected)??null;},isOpen:()=>el.open};
 }

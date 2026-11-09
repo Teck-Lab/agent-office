@@ -216,3 +216,36 @@ test('helper approval/continuation waits and parents supervising busy descendant
   await o.send([event('waiting','nested',{parentId:'supervisor',summary:'Awaiting continuation',ts:o.at()})]);
   o.advance(30000);await o.send([],ids);o.advance(31000);await o.send([],ids);assert.equal(o.state.snapshot().workers.length,5);
 });
+
+test('meeting membership is exact, main-only, source scoped and survives reconnect without changing activity',async t=>{
+ const {state,send}=await office(t),cmd=(workerId,action,id='handoff',extra={})=>event('meeting',workerId,{nativeKind:'main',meeting:{action,id,...extra}});
+ await send({events:[event('session_start','a',{nativeKind:'main'}),event('session_start','b',{nativeKind:'main'}),event('subagent_start','helper',{parentId:'a',nativeKind:'sub'}),event('session_start','orphan',{nativeKind:'sub'}),event('tool_start','a',{nativeKind:'main',tool:'read'})]});
+ const before=state.snapshot().workers.find(w=>w.workerId.endsWith(':a'));
+ await send({events:[cmd('a','start','handoff',{title:'Handoff',agenda:'Check contract'})]});
+ let meeting=state.snapshot().meetings[0];assert.deepEqual(meeting.participants,[before.workerId]);
+ assert.equal(meeting.ownerId,before.workerId);assert.equal(meeting.sourceId,sourceId);
+ const after=state.snapshot().workers.find(w=>w.workerId===before.workerId);assert.equal(after.status,before.status);assert.equal(after.lastTs,before.lastTs);assert.equal(after.toolCalls,before.toolCalls);
+ assert.equal((await send({events:[cmd('helper','join')]})).status,202);
+ assert.equal((await send({events:[cmd('orphan','join')]})).status,202);
+ assert.deepEqual(state.snapshot().meetings[0].participants,[before.workerId],'even orphan helpers cannot become main by spoofing a later event');
+ assert.equal((await send({events:[event('meeting','helper',{parentId:'a',nativeKind:'sub',meeting:{action:'join',id:'handoff'}})]})).status,400);
+ await send({events:[cmd('b','join'),cmd('b','update','handoff',{decision:'Unauthorized'}),cmd('b','end')]});
+ meeting=state.snapshot().meetings[0];assert.equal(meeting.participants.length,2);assert.equal(meeting.decision,undefined);
+ await send({events:[cmd('a','update','handoff',{decision:'Accepted contract'})]});
+ const snap=JSON.parse((await send({events:[],wantSnapshot:true})).body).snapshot;
+ assert.equal(snap.meetings[0].decision,'Accepted contract');assert.ok(snap.recent.some(e=>e.kind==='meeting'&&e.meetings[0]?.participants.length===2));
+ await send({events:[cmd('b','leave')]});assert.equal(state.snapshot().meetings[0].participants.length,1);
+ await send({events:[event('session_end','a')]});assert.deepEqual(state.snapshot().meetings,[]);
+ await send({events:[cmd('a','start','late',{title:'No resurrection'})]});assert.deepEqual(state.snapshot().meetings,[]);
+});
+
+test('separate meetings do not auto-invite other Runs and an owner ending a meeting clears membership',async t=>{
+ const {state,send}=await office(t);await send({events:[event('session_start','a',{nativeKind:'main'}),event('session_start','b',{nativeKind:'main'})]});
+ const c=(workerId,action,id,title)=>event('meeting',workerId,{nativeKind:'main',meeting:{action,id,...(title?{title}:{})}});
+ await send({events:[c('a','start','first','First'),c('b','start','second','Second')]});
+ assert.equal(state.snapshot().meetings.length,2);assert.ok(state.snapshot().meetings.every(m=>m.participants.length===1));
+ await send({events:[c('b','join','first')]});assert.equal(state.snapshot().meetings.find(m=>m.id==='second').participants.length,0);
+ await send({events:[c('a','end','first')]});assert.deepEqual(state.snapshot().meetings.map(m=>m.id),['second']);
+ const replay=event('meeting','b',{nativeKind:'main',meeting:{action:'update',id:'second',decision:'password=private-value'}});
+ await send({events:[replay]});const first=state.snapshot().meetings;await send({events:[replay]});assert.deepEqual(state.snapshot().meetings,first);assert.ok(!JSON.stringify(first).includes('private-value'));
+});

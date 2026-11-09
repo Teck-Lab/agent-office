@@ -4,12 +4,13 @@ import { readFileSync, lstatSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanOrchestration, nativeFamilyIds, type WorkerState, type Host, type RawEvent } from '../shared/events.ts';
 import type { OfficeState } from './state.ts';
+import {cleanMeeting} from '../shared/meetings.ts';
 import { cleanPlan } from '../shared/plan.ts';
 import { scrubText } from '../ingest/redact.ts';
 import { parseMood } from '../mcp/tools.ts';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$/;
-const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','plan','usage','error','idle','test_pass','test_fail','status','shout','celebrate','flip']);
+const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','plan','usage','error','idle','test_pass','test_fail','status','shout','celebrate','flip','meeting']);
 const signals = new Set(['status','shout','celebrate','flip']);
 const categories = new Set(['read','edit','bash','search','web','agent','todo','mcp','other']);
 const agents = new Set(['omp','claude','codex','commandcode','opencode','droid','gemini','qwen','cursor']);
@@ -100,6 +101,9 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
             (value.category !== undefined && (typeof value.category !== 'string' || !categories.has(value.category))) ||
             (value.tokens !== undefined && (!Number.isSafeInteger(value.tokens) || Number(value.tokens) < 0 || Number(value.tokens) > 10_000_000)) ||
             (value.tokenTotal !== undefined && (!Number.isSafeInteger(value.tokenTotal) || Number(value.tokenTotal) < 0))) return reply(res, 400, 'Invalid event');
+        const meeting=value.kind==='meeting'?cleanMeeting(value.meeting):undefined;
+        if(value.kind==='meeting'&&(!meeting||value.nativeKind!=='main'||value.parentId))return reply(res,400,'Meetings require a main session');
+        if(value.nativeKind!==undefined&&!['main','sub'].includes(String(value.nativeKind)))return reply(res,400,'Invalid native identity');
         const plan = value.plan === null ? null : value.plan === undefined ? undefined : cleanPlan(value.plan);
         if (value.plan !== undefined && value.plan !== null && !plan) return reply(res,400,'Invalid plan');
         const orchestration = cleanOrchestration(value.orchestration);
@@ -107,6 +111,8 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
         const prefix = `external:${sourceId}:`;
         pending.push({ id: `${sourceId}:${value.eventId}`, event: {
           ts: value.ts, agent: value.agent as RawEvent['agent'], workerId: prefix + value.workerId,
+          ...(meeting?{meeting}:{}),
+          ...(value.nativeKind?{nativeKind:value.nativeKind as 'main'|'sub'}:{}),
           ...(value.parentId ? { parentId: prefix + value.parentId } : {}), kind: value.kind as RawEvent['kind'],
           project: label(source.project)!, host: { ...source.host, name: label(source.host.name)! },
           ...(plan !== undefined ? {plan} : {}),
@@ -153,6 +159,7 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
       const current = packet.wantSnapshot === true ? state.snapshot() : undefined;
       const snapshot = current ? { version: 1, startedAt: current.startedAt, demo: false,
         workers: current.workers.filter(w => w.host?.kind === 'docker-sandbox' && w.host.id === sourceId),
+        meetings: current.meetings?.filter(m=>m.sourceId===sourceId),
         recent: current.recent.filter(e => e.host?.kind === 'docker-sandbox' && e.host.id === sourceId).slice(-100) } : undefined;
       res.writeHead(202, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ accepted: true, missing: ((packet.heartbeat ?? []) as string[]).filter(id => !active.has(`external:${sourceId}:${id}`)&&!dormant.has(`external:${sourceId}:${id}`)), ...(snapshot ? { snapshot } : {}) }));

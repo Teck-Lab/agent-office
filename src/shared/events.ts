@@ -7,6 +7,7 @@
  */
 
 import type { OfficePlan } from './plan.ts';
+import type {MeetingCommand,OfficeMeeting} from './meetings.ts';
 
 export type AgentKind =
   | "omp"
@@ -91,6 +92,7 @@ export type EventKind =
   | "tool_start"     // a tool call was issued
   | "tool_end"       // its result came back (isError set if it failed)
   | "reply"          // assistant text addressed to the human
+  | "meeting"        // explicit main-session meeting presentation
   | "plan"           // native OMP goal/todo snapshot; preserves activity
   | "usage"          // cumulative usage metadata; does not change the worker's pose
   | "waiting"        // turn finished, agent is waiting on the human
@@ -125,6 +127,9 @@ export interface OfficeEvent {
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  nativeKind?: "main" | "sub";
+  meeting?: MeetingCommand;
+  meetings?: OfficeMeeting[];
   plan?: OfficePlan | null;
   /** Full cwd, shown only in the inspector. */
   cwd?: string;
@@ -155,6 +160,7 @@ export interface Snapshot {
   startedAt: string;
   demo: boolean;
   workers: WorkerState[];
+  meetings?: OfficeMeeting[];
   recent: OfficeEvent[]; // last <= 200 events, oldest first
   /** Remotes being watched and whether they answer (src/remote/index.ts hosts()). */
   hosts?: HostStatus[];
@@ -187,6 +193,7 @@ export interface WorkerState {
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  nativeKind?: "main" | "sub";
   plan?: OfficePlan | null;
   /** Last status line / mood the agent set through MCP, if any. */
   mood?: string;

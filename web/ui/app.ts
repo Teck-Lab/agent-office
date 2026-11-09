@@ -97,7 +97,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     }
   };
 
-  const whiteboard=createWhiteboard({onChoose:()=>updateBoard()});
+  const whiteboard=createWhiteboard({onMeeting:key=>scene.setMeetingSelection?.(key),onChoose:()=>updateBoard()});
   function updateBoard(){
     const v=whiteboard.update(model.workers.values());
     scene.setWhiteboard?.(v?{title:v.plan?.goal?.objective??'No native goal',current:v.current,completed:v.completed,total:v.total,blocked:v.blocked,state:v.plan?.goal?.status??'Awaiting goal'}:null);
@@ -693,6 +693,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       // a (re)connect: the control plane may have changed while we were away
       void store.fromSnapshot(s.control);
       model.load(s);
+      scene.setMeetingSelection?.(whiteboard.setMeetings(s.meetings??[]));
       updateBoard();
       safe(() => scene.load(s));
       topbar.setDemo(!!s.demo);
@@ -707,6 +708,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       }
     },
     apply(e) {
+      if(e.meetings)scene.setMeetingSelection?.(whiteboard.setMeetings(e.meetings));
       const change = model.apply(e);
       updateBoard();
       safe(() => scene.apply(e));
