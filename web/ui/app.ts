@@ -29,6 +29,8 @@ import { controlToken } from "./control/token.ts";
 import type { ControlSession } from "../../src/shared/control.ts";
 
 export interface Chrome {
+  clearSelection?():void;
+  setFloorContext?(scoped:boolean):void;
   load(s: Snapshot): void;
   apply(e: OfficeEvent): void;
   connection(state: ConnState, retryInMs?: number): void;
@@ -81,6 +83,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   const topbar = createTopbar({ onNeedsYou: nextWaiting });
   const prefs = readPrefs();
   let selected: string | null = null;
+  let scopedFloor=false;
   let crt = !!prefs.crt;
   let mode: RenderMode = "pixel";
   let streamMode = false;
@@ -560,7 +563,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
 
   function refreshEmpty(): void {
     if (model.loaded) {
-      if (model.workers.size === 0 && !model.demo) empty.show("empty");
+      if (model.workers.size === 0 && !model.demo && !scopedFloor) empty.show("empty");
       else empty.hide();
     } else if (connState === "offline") {
       empty.show("offline");
@@ -700,6 +703,8 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   }, 1000);
 
   return {
+    clearSelection(){select(null);hoverId=null;hoverInfo.hidden=true;for(const timer of waitTimers.values())clearTimeout(timer);waitTimers.clear();flipped.clear();},
+    setFloorContext(scoped){if(scopedFloor!==scoped){scopedFloor=scoped;refreshEmpty();}},
     load(s) {
       // a (re)connect: the control plane may have changed while we were away
       void store.fromSnapshot(s.control);

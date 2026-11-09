@@ -205,3 +205,29 @@ reflections. Winter freezes the fountain. Reduced motion keeps rainy scenery
 visible without precipitation animation or moving passers; Ambient life also
 pauses the new water animation and traffic. These decorative figures are never
 added to the agent model, counters or orchestration.
+
+
+## Read-only project and Run floors
+
+The Floors selector offers All floors, a floor per project/execution-host pair,
+and a floor per Orca Run within that scope. Previous/next buttons and the existing
+elevator indicator show the selected floor. Selection is remembered in this
+browser. Empty selected floors remain available rather than changing teams.
+
+The global stream continues updating hidden floors. Only the selected scope is
+presented to the scene, feed, whiteboard, meetings and counters. Native helpers
+follow their root parent, including late parent discovery and nested helpers.
+Equal Run or project names across different hosts are not ownership matches.
+Coordinators remain in the office and dispatched sessions in the sandbox cloud.
+Meetings are filtered for display without changing actual membership.
+
+Ordinary updates remain incremental. Existing actors changing scope trigger a
+scoped snapshot; switching floors does not replay old handoffs or completion
+effects. Disconnection remains visible after a floor change. The selector resets
+the camera and clears the previous worker selection, without dispatching work or
+modifying agent, worktree or sandbox lifecycles.
+
+Validation: full isolated Linux suite 573 passed, 2 skipped; focused suite 91
+passed; 12 floor checks repeated after the final accessibility refinement.
+Typecheck, production build and live snapshot grouping passed. No visual browser
+inspection was performed.

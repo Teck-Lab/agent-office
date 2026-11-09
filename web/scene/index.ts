@@ -29,7 +29,7 @@ import {type WhiteboardSummary} from "./whiteboard.ts";
 import * as P from "./props.ts";
 import { DESK_W, POD_H, WALL_H, deskTop } from "./layout.ts";
 import { BRAND, HOST_BRAND } from "../../src/shared/events.ts";
-import { FONT, fit, textBitmap } from "./font.ts";
+import { FONT, MICRO, fit, textBitmap } from "./font.ts";
 import { drawMark } from "./logos.ts";
 import { bitmap, clamp, ctx2d, makeCanvas, type Bitmap } from "./util.ts";
 
@@ -76,6 +76,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   const g = ctx2d(canvas, { alpha: false });
 
   let clock = 0;
+  let floorCode="ALL";
   const crew = new Crew(() => clock);
   const cat = new Cat();
   const sky = new Sky(7);
@@ -372,6 +373,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     if (!asciiPass) {
       if (crew.elevator.open > 0.01) P.elevatorInside(wg, el.x, el.y);
       P.elevatorDoors(wg, el.x, el.y, crew.elevator.open, now, now - crew.elevator.ding < 1600 ? 1 : 0);
+      const floor=textBitmap(MICRO(),fit(MICRO(),floorCode,12),C.gold3);
+      wg.fillStyle=C.ink;wg.fillRect(el.x+11,el.y-P.ELEV_H-8,14,6);wg.drawImage(floor.c,el.x+12,el.y-P.ELEV_H-7);
     } else {
       const half = (P.ELEV_W - 4) / 2, gap = Math.round(crew.elevator.open * half);
       wg.fillStyle = C.slate4;
@@ -832,6 +835,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     getMode() {
       return mode;
     },
+    setFloor(code,reset=false){floorCode=code;if(reset){cam.reset();crew.selected=null;crew.hovered=null;cut=null;}},
     setConnection(state){crew.setConnection(state);},
     setAppearance(p){
       const next=cleanView(p),repaint=next.theme!==preferences.theme||next.decor!==preferences.decor;
