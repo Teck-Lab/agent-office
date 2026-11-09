@@ -50,3 +50,28 @@ a `snapshot` alongside its ordinary receipt. This supports `office_peers` throug
 the existing tunnel. It contains only workers and recent events whose server-owned
 Docker Sandbox host ID exactly matches the authenticated source, and exposes no
 control settings or other projects. Snapshot reads do not fabricate activity.
+
+
+## Read-only native goal/task whiteboard
+
+OMP producers may send kind "plan" with "plan: {goal, phases}". Goal is
+null or {id, objective, status}; statuses are active, paused, complete,
+dropped and budget-limited. Phases contain a name and tasks with content,
+status (pending/in_progress/completed/abandoned/blocked) and an optional blocker.
+Unknown fields are discarded, credential-like text is redacted, labels are
+capped, and the preview is limited to 12 phases, 60 tasks and 24 KiB. An explicit
+truncated flag tells the viewer that OMP retains more. Null clears a plan.
+
+Each worker owns its own plan; native helpers do not inherit their parent's
+goal/todos. Plan events preserve the last activity, pose, tool counts and
+completion status. Snapshots carry plans so browser reconnects work. A physical
+pixel whiteboard opens the same read-only sheet as the Whiteboard button or B.
+Multiple coordinators have separate boards. Connected assignments are grouped
+only by equal Orca Run and sandbox host, never by project name alone. The sheet
+shows session activity and native goal state separately; it does not claim that
+a waiting turn is a completed Orca Task or close any GitHub issue.
+
+This opt-in metadata includes sanitized goal/task titles and blocker notes,
+unlike the activity-only observer. Prompts, tool arguments, output, files and
+credentials are not part of the plan schema. The integration adds no agent-control
+endpoint or additional MCP and continues using the authenticated loopback tunnel.

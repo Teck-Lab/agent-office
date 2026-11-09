@@ -140,3 +140,42 @@ test('ending a native root retires every descendant, with cycle-safe cleanup',as
   await send({events:[event('subagent_start','cycle-a',{parentId:'cycle-b'}),event('subagent_start','cycle-b',{parentId:'cycle-a'})]});
   await send({events:[event('session_end','cycle-a')]});assert.equal(state.size,0);
 });
+
+
+test('native plans persist across snapshots and replay without changing worker activity',async t=>{
+  const {state,send}=await office(t);
+  const plan={goal:{id:'goal-main',objective:'Ship preview',status:'active'},phases:[{name:'Delivery',tasks:[{content:'Verify CNPG',status:'blocked',blocker:'Waiting for restore proof'}]}]};
+  await send({events:[event('session_start','main',{orchestration:{role:'coordinator',runId:'run-board'}}),event('tool_start','main',{tool:'read',category:'read'})]});
+  const before=state.snapshot().workers[0], update=event('plan','main',{plan});
+  assert.equal((await send({events:[update]})).status,202);
+  await send({events:[update]});
+  let after=state.snapshot().workers[0];
+  assert.deepEqual(after.plan,plan);assert.equal(after.status,before.status);assert.equal(after.lastTs,before.lastTs);assert.equal(after.toolCalls,1);
+  const childPlan={goal:null,phases:[]};
+  await send({events:[event('subagent_start','child',{parentId:'main',plan:childPlan})]});
+  assert.deepEqual(state.snapshot().workers.find(w=>w.parentId).plan,childPlan,'plans belong to a session, not its inherited placement');
+  assert.equal((await send({events:[event('plan','main',{plan:{...plan,goal:{...plan.goal,status:'invented'}}})]})).status,400);
+  assert.deepEqual(state.snapshot().workers[0].plan,plan,'invalid snapshots cannot replace the current plan');
+  await send({events:[event('plan','main',{plan:null})]});assert.equal(state.snapshot().workers[0].plan,null);
+});
+
+test('plan payloads are capped, redacted and stripped of unrecognized fields',async t=>{
+  const {state,send}=await office(t);
+  const secret='ghp_'+'z'.repeat(36);
+  const plan={goal:{id:'goal-redacted',objective:'Verify '+secret,status:'paused',raw:'PRIVATE'},phases:Array.from({length:14},()=>({name:'Tests',tasks:Array.from({length:10},()=>({content:'Check password=unsafe',status:'pending',raw:'PRIVATE'}))})),transcript:'PRIVATE'};
+  assert.equal((await send({events:[event('session_start','main',{plan})]})).status,202);
+  const saved=state.snapshot().workers[0].plan;
+  assert.ok(saved.truncated);assert.equal(saved.phases.length,12);assert.equal(saved.phases.flatMap(p=>p.tasks).length,60);
+  assert.ok(!JSON.stringify(saved).includes(secret));assert.ok(!JSON.stringify(saved).includes('unsafe'));assert.ok(!JSON.stringify(saved).includes('PRIVATE'));
+});
+
+
+test('Unicode goals and blocker notes stay inside the ingestion envelope',async t=>{
+  const {state,send}=await office(t);
+  // The incoming packet itself must fit; test the shared sanitizer separately
+  // through a normal batch with repetitive but valid Unicode titles.
+  const plan={goal:{id:'g-unicode',objective:'界'.repeat(240),status:'active'},phases:[{name:'Delivery',tasks:Array.from({length:60},()=>({content:'界'.repeat(100),status:'blocked',blocker:'界'.repeat(100)}))}]};
+  assert.equal((await send({events:[event('session_start','unicode',{plan})]})).status,202);
+  const saved=state.snapshot().workers[0].plan;assert.ok(saved.truncated);
+  assert.ok(Buffer.byteLength(JSON.stringify(saved))<=24*1024);assert.ok(saved.phases[0].tasks.length>0);
+});

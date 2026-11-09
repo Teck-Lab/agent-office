@@ -6,6 +6,8 @@
  * "$ npm test", capped at SUMMARY_MAX characters.
  */
 
+import type { OfficePlan } from './plan.ts';
+
 export type AgentKind =
   | "omp"
   | "claude"
@@ -89,6 +91,7 @@ export type EventKind =
   | "tool_start"     // a tool call was issued
   | "tool_end"       // its result came back (isError set if it failed)
   | "reply"          // assistant text addressed to the human
+  | "plan"           // native OMP goal/todo snapshot; preserves activity
   | "usage"          // cumulative usage metadata; does not change the worker's pose
   | "waiting"        // turn finished, agent is waiting on the human
   | "test_fail"      // a test command exited non-zero  -> table flip
@@ -122,6 +125,7 @@ export interface OfficeEvent {
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  plan?: OfficePlan | null;
   /** Full cwd, shown only in the inspector. */
   cwd?: string;
   model?: string;
@@ -183,6 +187,7 @@ export interface WorkerState {
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  plan?: OfficePlan | null;
   /** Last status line / mood the agent set through MCP, if any. */
   mood?: string;
   cwd?: string;

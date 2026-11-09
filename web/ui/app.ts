@@ -9,6 +9,7 @@ import { BRAND, type OfficeEvent, type Snapshot } from "../../src/shared/events.
 import { canRecord, record, ReplayBuffer, screenshot, type Recording } from "./capture.ts";
 import type { ConnState } from "./connection.ts";
 import { h } from "./dom.ts";
+import {createWhiteboard} from "./whiteboard.ts";
 import { createFeed } from "./feed.ts";
 import { createInspector } from "./inspector.ts";
 import { agentName, hostLabel, isRemote } from "./logos.ts";
@@ -96,6 +97,12 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     }
   };
 
+  const whiteboard=createWhiteboard({onChoose:()=>updateBoard()});
+  function updateBoard(){
+    const v=whiteboard.update(model.workers.values());
+    scene.setWhiteboard?.(v?{title:v.plan?.goal?.objective??'No native goal',current:v.current,completed:v.completed,total:v.total,blocked:v.blocked,state:v.plan?.goal?.status??'Awaiting goal'}:null);
+  }
+  scene.onWhiteboard?.(()=>whiteboard.show());
   const inspector = createInspector({ onClose: () => select(null), onFocus: (id) => safe(() => scene.focus(id)) });
   const feed = createFeed({ onPick: (id) => select(id, true), onToggle: () => setFeed(!feed.isOpen()) });
 
@@ -188,7 +195,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   const hint = createStreamHint(() => setStream(false));
   const flashRoot = h("div", { class: "flash-root" });
 
-  root.append(topbar.el, feed.el, feed.tab, inspector.el, panel.el, settingsSlot, toolbar.el, toasts.el, conn.el, empty.el, hint.el, hint.corner, sessionList.el, toolbar.tip, help.el, hireSlot, flashRoot);
+  root.append(whiteboard.el,whiteboard.tab,topbar.el, feed.el, feed.tab, inspector.el, panel.el, settingsSlot, toolbar.el, toasts.el, conn.el, empty.el, hint.el, hint.corner, sessionList.el, toolbar.tip, help.el, hireSlot, flashRoot);
 
   /*
    * Code before it is needed. The pointer on a worker the office started, or on a "Your agents"
@@ -311,7 +318,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   /* Panels hidden by CSS stay out of the tab order and the a11y tree. */
   function syncInert(): void {
     const phone = isPhone();
-    for (const el of [topbar.el, toolbar.el, inspector.el, empty.el, panel.el, settings?.el]) if (el) el.inert = streamMode;
+    for (const el of [topbar.el, toolbar.el, inspector.el, empty.el, panel.el, settings?.el, whiteboard.tab]) if (el) el.inert = streamMode;
     feed.el.inert = streamMode || (!feed.isOpen() && !phone);
     feed.tab.inert = streamMode || feed.isOpen() || phone;
   }
@@ -645,6 +652,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (help.isOpen() && ev.key !== "?") return;
     if (hire?.isOpen()) return;
+    if (whiteboard.isOpen()) return;
     if (ev.key === "Escape") {
       if (settings?.isOpen()) closeSettings();
       else if (panel.isOpen()) closePanel();
@@ -652,8 +660,10 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       else if (selected) select(null);
       return;
     }
+    if (whiteboard.isOpen()) return;
     if (ev.repeat) return;
     const actions: Record<string, () => void> = {
+      b: () => whiteboard.show(),
       n: openHire,
       a: () => setMode(mode === "pixel" ? "ascii" : "pixel"),
       c: () => setCrt(!crt),
@@ -683,6 +693,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       // a (re)connect: the control plane may have changed while we were away
       void store.fromSnapshot(s.control);
       model.load(s);
+      updateBoard();
       safe(() => scene.load(s));
       topbar.setDemo(!!s.demo);
       topbar.update(model, false);
@@ -697,6 +708,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     },
     apply(e) {
       const change = model.apply(e);
+      updateBoard();
       safe(() => scene.apply(e));
       if (panel.isOpen()) panel.workerEvent(e);
       if (change.renamed) {

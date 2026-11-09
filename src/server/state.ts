@@ -19,6 +19,7 @@
  * minute, so a last transcript line read after its process exited doesn't
  * walk it back in.
  */
+import { cleanPlan } from '../shared/plan.ts';
 import { homedir } from "node:os";
 import { foldPrivate } from "../ingest/presence.ts";
 import {
@@ -44,7 +45,7 @@ export const INTERN_GRACE_MS = 6_000;
 const AGENTS = new Set<AgentKind>(["omp", "claude", "commandcode", "codex", "opencode", "droid", "gemini", "qwen", "cursor"]);
 const HOSTS = new Set<HostKind>(["docker-sandbox", "local", "ssh", "daytona", "boat", "railway", "vercel"]);
 const KINDS = new Set<EventKind>([
-  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "usage", "waiting",
+  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "plan", "usage", "waiting",
   "test_fail", "test_pass", "error", "subagent_start", "subagent_end", "idle", "session_end",
   "status", "shout", "celebrate", "flip",
 ]);
@@ -172,7 +173,7 @@ export class OfficeState {
     }
 
     if (e.kind === "session_end") return this.remove(w, e);
-    if (!e.parentId && e.kind !== "idle" && e.kind !== "usage") w.heldWait = undefined;
+    if (!e.parentId && e.kind !== "idle" && e.kind !== "usage" && e.kind !== "plan") w.heldWait = undefined;
     if (!e.parentId && e.kind === "waiting" && this.busyInterns(w, now)) e = this.supervise(w, e.ts, now);
     this.fold(w, e, now);
     const out = this.publish(e);
@@ -423,7 +424,7 @@ export class OfficeState {
         workerId: e.workerId,
         agent: e.agent,
         project: e.project,
-        status: e.kind === "usage" ? "thinking" : e.kind,
+        status: e.kind === "plan" ? "idle" : e.kind === "usage" ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
         tokens: 0,
@@ -459,6 +460,7 @@ export class OfficeState {
     if (e.project) s.project = e.project;
     if (e.cwd) s.cwd = e.cwd;
     if (e.model) s.model = e.model;
+    if (e.plan !== undefined) s.plan = e.plan;
     if (e.role) s.role = e.role;
   }
 
@@ -467,7 +469,7 @@ export class OfficeState {
     this.merge(w, e);
     if (e.tokenTotal !== undefined) s.tokens = Math.max(s.tokens, e.tokenTotal);
     else if (e.tokens) s.tokens += e.tokens;
-    if (e.kind === "usage") { this.touch(w, e.ts, now); return; }
+    if (e.kind === "usage" || e.kind === "plan") { this.touch(w, e.ts, now); return; }
     s.status = e.kind;
     s.lastTs = e.ts;
     if (e.kind === "tool_start") {
@@ -521,6 +523,7 @@ export class OfficeState {
     if (s.host) b.host = s.host;
     if (s.placement) b.placement = s.placement;
     if (s.orchestration !== undefined) b.orchestration = s.orchestration;
+    if (s.plan !== undefined) b.plan = s.plan;
     if (s.parentId) b.parentId = s.parentId;
     if (s.cwd) b.cwd = s.cwd;
     if (s.model) b.model = s.model;
@@ -566,6 +569,7 @@ export class OfficeState {
       e.orchestration = cleanOrchestration(raw.orchestration);
       e.placement = e.orchestration?.role === "coordinator" ? "office" : "cloud";
     }
+    if (raw.plan !== undefined) e.plan = cleanPlan(raw.plan);
     const parentId = clean(raw.parentId, ID_MAX);
     if (parentId && parentId !== workerId) e.parentId = parentId;
     // Remote paths are shown as they are: "~" would be this machine's home.

@@ -11,6 +11,7 @@
  * The `ascii` variants are the same plan stripped to outlines on a flat
  * ground, which is what the ASCII pass samples.
  */
+import {whiteboardRect,withWhiteboardBay} from "./whiteboard.ts";
 import type { AgentKind } from "../../src/shared/events.ts";
 import { HOST_BRAND } from "../../src/shared/events.ts";
 import { BRAND_ART, C, art, mix, rgba, type ArtKey, type BrandArt } from "./palette.ts";
@@ -30,6 +31,7 @@ export interface RoomPlan {
   windows: Rect[];
   elevator: { x: number; y: number; doorX: number };
   tv: Rect;
+  whiteboard: Rect;
   clock: { x: number; y: number };
   /** The neon "npx theagentoffice" sign on the back wall, when the wall has room for it. */
   sign: Rect | null;
@@ -96,7 +98,7 @@ export function plan(main: Rect, wing: Rect | null, room: Rect): RoomPlan {
     uplink = { x: wing.x + 14, y: wing.y + 22 };
   }
   return {
-    room, main, wing, windows, elevator, tv, clock, sign,
+    room:withWhiteboardBay(room), main:withWhiteboardBay(main), whiteboard:whiteboardRect(main), wing, windows, elevator, tv, clock, sign,
     rack: { x: rackX, y: WALL_H + 10 },
     coffee: { x: rackX - 32, y: WALL_H + 9 },
     cooler: { x: elevator.x + P.ELEV_W + 4, y: WALL_H + 8 },

@@ -4,11 +4,12 @@ import { readFileSync, lstatSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanOrchestration, type Host, type RawEvent } from '../shared/events.ts';
 import type { OfficeState } from './state.ts';
+import { cleanPlan } from '../shared/plan.ts';
 import { scrubText } from '../ingest/redact.ts';
 import { parseMood } from '../mcp/tools.ts';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$/;
-const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','usage','error','idle','test_pass','test_fail','status','shout','celebrate','flip']);
+const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','plan','usage','error','idle','test_pass','test_fail','status','shout','celebrate','flip']);
 const signals = new Set(['status','shout','celebrate','flip']);
 const categories = new Set(['read','edit','bash','search','web','agent','todo','mcp','other']);
 const agents = new Set(['omp','claude','codex','commandcode','opencode','droid','gemini','qwen','cursor']);
@@ -81,6 +82,8 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
             (value.category !== undefined && (typeof value.category !== 'string' || !categories.has(value.category))) ||
             (value.tokens !== undefined && (!Number.isSafeInteger(value.tokens) || Number(value.tokens) < 0 || Number(value.tokens) > 10_000_000)) ||
             (value.tokenTotal !== undefined && (!Number.isSafeInteger(value.tokenTotal) || Number(value.tokenTotal) < 0))) return reply(res, 400, 'Invalid event');
+        const plan = value.plan === null ? null : value.plan === undefined ? undefined : cleanPlan(value.plan);
+        if (value.plan !== undefined && value.plan !== null && !plan) return reply(res,400,'Invalid plan');
         const orchestration = cleanOrchestration(value.orchestration);
         if (value.orchestration !== undefined && value.orchestration !== null && !orchestration) return reply(res, 400, 'Invalid Orca ownership');
         const prefix = `external:${sourceId}:`;
@@ -88,6 +91,7 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
           ts: value.ts, agent: value.agent as RawEvent['agent'], workerId: prefix + value.workerId,
           ...(value.parentId ? { parentId: prefix + value.parentId } : {}), kind: value.kind as RawEvent['kind'],
           project: label(source.project)!, host: { ...source.host, name: label(source.host.name)! },
+          ...(plan !== undefined ? {plan} : {}),
           orchestration, placement: orchestration?.role === 'coordinator' ? 'office' : 'cloud',
           ...(value.tool ? { tool: value.kind === 'status' ? parseMood(value.tool) : label(value.tool, 48) } : {}),
           ...(value.category ? { category: value.category as RawEvent['category'] } : {}),

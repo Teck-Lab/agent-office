@@ -366,6 +366,7 @@ export class Crew {
     const ownerPlacement = w.parentId ? this.workers.get(w.parentId)?.placement : undefined;
     const placement = ownerPlacement ?? e.placement;
     if (placement && placement !== w.placement) this.rehome(w, placement, now);
+    if(e.kind==="plan")return;
     w.lastEventAt = now;
     if (e.cwd) w.cwd = e.cwd;
     if (e.model) w.model = e.model;

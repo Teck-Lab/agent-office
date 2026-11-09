@@ -43,7 +43,7 @@ export interface HostSummary {
 
 const HISTORY = 12;
 /** Events an agent sends through MCP alongside its work; they never change what it is doing. */
-const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage"]);
+const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage", "plan"]);
 const OFFLINE = /^remote offline/i;
 const isRemote = (h?: Host): h is Host => !!h && h.kind !== "local";
 
@@ -149,6 +149,7 @@ export class OfficeModel {
         host: e.host,
         placement: e.placement,
         orchestration: e.orchestration,
+        plan: e.plan,
         status: SIGNALS.has(e.kind) ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
@@ -170,6 +171,7 @@ export class OfficeModel {
     if (e.project) w.project = e.project;
     if (e.cwd) w.cwd = e.cwd;
     if (e.model) w.model = e.model;
+    if (e.plan !== undefined) w.plan = e.plan;
     if (e.role) w.role = e.role;
     if (e.host) w.host = e.host;
     if (e.parentId) w.parentId = e.parentId;
@@ -182,7 +184,7 @@ export class OfficeModel {
         const child = this.workers.get(id)!; child.orchestration = w.orchestration; child.placement = w.placement;
       }
     }
-    w.lastTs = e.ts;
+    if(e.kind!=="plan")w.lastTs = e.ts;
     if (e.kind === "status") w.mood = moodOf(e) || undefined;
     if (e.kind !== "tool_end" && !SIGNALS.has(e.kind)) w.status = e.kind;
     if (e.kind === "tool_start") {
@@ -244,7 +246,7 @@ export class OfficeModel {
 }
 
 function push(w: Worker, e: OfficeEvent): void {
-  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
+  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "plan" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
   w.history.push({
     seq: e.seq,
     ts: parseTs(e.ts),

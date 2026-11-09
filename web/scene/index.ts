@@ -21,6 +21,7 @@ import { Ascii } from "./ascii.ts";
 import { furnitureFigures, workerFigures } from "./figures.ts";
 import { Crt } from "./crt.ts";
 import * as R from "./room.ts";
+import {drawWhiteboard,type WhiteboardSummary} from "./whiteboard.ts";
 import * as P from "./props.ts";
 import { DESK_W, POD_H, WALL_H, deskTop } from "./layout.ts";
 import { BRAND, HOST_BRAND } from "../../src/shared/events.ts";
@@ -86,14 +87,16 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   let crtOn = false;
   let hourOverride: number | null = null;
   let weather: "clear" | "rain" | null = null;
+  let boardSummary:WhiteboardSummary|null=null, boardCb:(()=>void)|null=null;
+  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y),r=plan.whiteboard;return wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h;};
   let selectCb: ((id: string | null) => void) | null = null;
   let hoverCb: ((id: string | null) => void) | null = null;
   let labelBoxes: { x: number; y: number; w: number; h: number; id?: string }[] = [];
 
   // world buffers: the pixel office, and the clean one ASCII mode samples
   let layoutVersion = -1;
-  let room = crew.layout.room();
-  let plan = R.plan(crew.layout.main, crew.layout.wing, room);
+  let plan = R.plan(crew.layout.main, crew.layout.wing, crew.layout.room());
+  let room = plan.room;
   let origin = { x: 0, y: 0 };
   let size = { w: 1, h: 1 };
   let world: Bitmap = bitmap(1, 1);
@@ -105,8 +108,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   function rebuild() {
     layoutVersion = crew.layout.version;
-    room = crew.layout.room();
-    plan = R.plan(crew.layout.main, crew.layout.wing, room);
+    plan = R.plan(crew.layout.main, crew.layout.wing, crew.layout.room());
+    room = plan.room;
     origin = { x: room.x - plan.pad, y: room.y - plan.pad };
     const ns = { w: room.w + plan.pad * 2, h: room.h + plan.pad * 2 };
     if (ns.w !== size.w || ns.h !== size.h) {
@@ -125,7 +128,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   /** x extent of the pods plus a margin, so auto-fit never crops a desk. */
   function podSpan(): { x0: number; x1: number } | undefined {
-    let x0 = Infinity, x1 = -Infinity;
+    // Keep the whiteboard visible with the pods in portrait auto-fit, too.
+    let x0 = plan.whiteboard.x, x1 = plan.whiteboard.x+plan.whiteboard.w;
     for (const b of crew.layout.blocks.values()) { x0 = Math.min(x0, b.tx); x1 = Math.max(x1, b.tx + b.w); }
     return isFinite(x0) ? { x0: x0 - 26, x1: x1 + 26 } : undefined;
   }
@@ -350,6 +354,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, -3, room.w + 4, 3);
     }
     R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass);
+    drawWhiteboard(wg,plan.whiteboard,boardSummary,asciiPass);
     const el = plan.elevator;
     if (!asciiPass) {
       if (crew.elevator.open > 0.01) P.elevatorInside(wg, el.x, el.y);
@@ -722,7 +727,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       const id = pickAt(p.x, p.y);
       if (id !== crew.hovered) hoverCb?.(id);
       crew.hovered = id;
-      canvas.style.cursor = id ? "pointer" : "grab";
+      canvas.style.cursor = id || boardAt(p.x,p.y) ? "pointer" : "grab";
       return;
     }
     pointers.set(e.pointerId, p);
@@ -757,8 +762,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
           lastTap = null;
         } else {
           const id = pickAt(p.x, p.y);
-          crew.selected = id;
-          selectCb?.(id);
+          if(boardAt(p.x,p.y))boardCb?.();
+          else {crew.selected = id;selectCb?.(id);}
           lastTap = { x: p.x, y: p.y, t };
         }
       }
@@ -813,6 +818,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     setDirector(on: boolean) {
       director = !!on;
     },
+    setWhiteboard(summary){boardSummary=summary;},
+    onWhiteboard(cb){boardCb=cb;},
     onSelect(cb) {
       selectCb = cb;
     },

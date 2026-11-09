@@ -17,6 +17,8 @@ export interface OfficeScene {
   getMode(): RenderMode;
   /** CRT scanlines + bloom overlay. */
   setCrt(on: boolean): void;
+  setWhiteboard?(summary: import("./scene/whiteboard.ts").WhiteboardSummary|null): void;
+  onWhiteboard?(cb:()=>void): void;
   /** Called when the user clicks a worker (null when clicking empty floor). */
   onSelect(cb: (workerId: string | null) => void): void;
   /** Called when the pointer moves onto a worker (or off one: null), so the chrome can get ready for a click. */
