@@ -17,13 +17,13 @@ export function drawSeason(g:CanvasRenderingContext2D,room:{x:number;w:number},t
  g.save();g.globalAlpha=1-dark*.45;
  for(let i=0;i<Math.ceil(room.w/57);i++){
   const x=Math.floor(room.x+i*57+19),y=base-5-(i%3)*3;
-  g.fillStyle='#584b54';g.fillRect(x,y-17,2,22);
+  g.fillStyle='#584b54';g.fillRect(x,y-17,2,base-(y-17));
   g.fillStyle=colors[season];g.fillRect(x-7,y-19,16,10);g.fillRect(x-4,y-23,10,5);g.fillRect(x-10,y-15,22,7);
   if(season==='spring'){g.fillStyle='#edb9ca';for(const [dx,dy]of [[-5,-18],[4,-19],[-2,-13],[7,-12]])g.fillRect(x+dx!,y+dy!,2,2);}
   if(season==='winter'){g.fillStyle='#e4edf5';g.fillRect(x-4,y-24,10,2);g.fillRect(x-7,y-20,16,2);g.fillRect(x-10,y-16,5,2);}
   if(season==='autumn'){g.fillStyle='#e6ac63';g.fillRect(x-5,y-20,5,3);g.fillRect(x+2,y-13,6,3);}
  }
- if(season==='winter'){g.fillStyle='#c5d5e2';g.fillRect(room.x,base-2,room.w,2);}
+ g.fillStyle=season==='winter'?'#c5d5e2':season==='autumn'?'#6c6550':'#426454';g.fillRect(room.x,base-2,room.w,2);
  // A few leaves/blossoms/snowflakes, not an actual weather report.
  if(time>0&&season!=='summer')for(let i=0;i<Math.ceil(room.w/46);i++){
   const x=Math.floor(room.x+((i*47+Math.sin(time/2500+i)*7+room.w)%room.w));

@@ -992,7 +992,7 @@ export class Crew {
       }
       const occ = this.occupant(st.main);
       const seated = occ && occ.seated && !occ.leaving && !occ.walking;
-      const flipping = occ?.show?.kind === "flip" ? occ : undefined;
+      const flipping = occ && !this.unavailable(occ) && occ.show?.kind === "flip" ? occ : undefined;
       if (flipping) {
         const t = now - flipping.show!.t0;
         const air = t > 550 && t < 1400 || t > 3850 && t < 4850;
@@ -1036,7 +1036,7 @@ export class Crew {
     if (this.dimFurniture) g.globalAlpha = a0 * 0.55;
     g.drawImage(body.c, x, y);
     g.globalAlpha = a0;
-    const scr = seated || (occ && !occ.leaving && occ.stand > 0) ? this.screenOf(occ, now) : occ && !occ.leaving ? "boot" : "off";
+    const scr = occ && this.unavailable(occ) ? "off" : seated || (occ && !occ.leaving && occ.stand > 0) ? this.screenOf(occ, now) : occ && !occ.leaving ? "boot" : "off";
     const screenAgent = occ?.agent ?? agent;
     P.monitorFrame(g, mx, my, key);
     P.drawScreen(g, mx + 2, my + 2, P.SCR_W, P.SCR_H, scr, screenAgent, now, occ?.seed ?? 0);
@@ -1051,7 +1051,7 @@ export class Crew {
         g.fillStyle = C.white; g.fillRect(x + 25, y + 2, 7, 4);
         g.fillStyle = C.slate4; g.fillRect(x + 28, y + 2, 1, 4); g.fillRect(x + 26, y + 3, 2, 1); g.fillRect(x + 30, y + 3, 1, 1);
       }
-      if (occ.show?.kind === "alarm") P.alarmLight(g, x + 30, y + 3, now);
+      if (!this.unavailable(occ) && occ.show?.kind === "alarm") P.alarmLight(g, x + 30, y + 3, now);
     }
   }
 

@@ -172,6 +172,18 @@ test('seasonal scenery is painted under the actual window clip, not across the o
  const g={save(){states.push(clipped)},restore(){clipped=states.pop()},beginPath:noop,rect(...r){windows.push(r)},clip(){clipped=true},arc:noop,fill:noop,drawImage:noop,
  fillRect(){if(this.fillStyle==='#edb9ca'){seasonPixels++;assert.equal(clipped,true);}}};
  try{new Sky(7).draw(g,[{x:12,y:12,w:45,h:60},{x:80,y:12,w:45,h:60}],{x:0,w:150},12,60,skyAt(12),0,0,false,'spring');
- assert.ok(seasonPixels>0);assert.deepEqual(windows,[[12,12,45,60],[80,12,45,60]]);assert.equal(clipped,false);
+ assert.ok(seasonPixels>0);assert.deepEqual(windows.slice(0,2),[[12,12,45,60],[80,12,45,60]]);assert.equal(clipped,false);
+ }finally{globalThis.document=previous;}
+});
+
+
+test('all tree trunks meet the ground in both ordinary and taller cloud windows',()=>{
+ const previous=globalThis.document,noop=()=>{},atlas={fillRect:noop,drawImage:noop};
+ globalThis.document={createElement:()=>({width:1,height:1,getContext:()=>atlas})};
+ const bottoms=new Set(),heights=new Set(),state=[];let path=[],clip=[];
+ const g={save(){state.push(clip)},restore(){clip=state.pop()},beginPath(){path=[]},rect(x,y,w,h){path.push({x,y,w,h})},clip(){clip=path},arc:noop,fill:noop,drawImage:noop,
+ fillRect(x,y,w,h){if(this.fillStyle==='#584b54'){assert.equal(clip.length,1);assert.equal(y+h,clip[0].y+clip[0].h,'trunk reaches this sill, regardless of canopy height');bottoms.add(y+h);heights.add(h);}}};
+ try{new Sky(7).draw(g,[{x:0,y:12,w:150,h:60},{x:170,y:8,w:150,h:80}],{x:0,w:320},12,60,skyAt(12),0,0,false,'autumn');
+ assert.deepEqual([...bottoms].sort((a,b)=>a-b),[72,88]);assert.equal(heights.size,3,'height variation is preserved without lifting the roots');
  }finally{globalThis.document=previous;}
 });

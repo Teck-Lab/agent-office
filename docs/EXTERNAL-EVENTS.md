@@ -190,6 +190,6 @@ spam. Producers cannot submit host_status or impersonate another source's health
 Source-scoped snapshots filter health records as well as workers and meetings.
 
 Validation: full isolated Linux suite 553 passed, 2 skipped; final focused suite
-73 passed including renderer bounds/clipping; plugin suite 283 passed. Production
+74 passed including renderer bounds/clipping and grounded tree trunks in both window heights; plugin suite 283 passed. Production
 build, typecheck, served asset hash and live observer status verified. No visual
 browser inspection was performed.

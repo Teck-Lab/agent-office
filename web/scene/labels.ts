@@ -255,7 +255,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
     const ink = brandInk(w.agent);
 
     // --- flip speech bubble (the money shot)
-    if (w.show?.kind === "flip") {
+    if (w.show?.kind === "flip" && !crew.unavailable(w)) {
       const t = now - w.show.t0;
       let say = "";
       if (t > 900 && t < 3900) say = "(╯°□°)╯︵ ┻━┻";
@@ -292,7 +292,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
         placed.push({ x: bx, y: by, w: bw, h: bh });
       }
     }
-    const flipping = w.show?.kind === "flip";
+    const flipping = w.show?.kind === "flip" && !crew.unavailable(w);
 
     // --- the tag above the head: mood if set, else agent / role
     const mood = w.mood;

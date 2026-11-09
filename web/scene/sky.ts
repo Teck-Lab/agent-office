@@ -255,7 +255,14 @@ export class Sky {
       const off = Math.floor(-80 - pan * l.par);
       g.drawImage(l.bm.c, room.x + off, top);
     }
-    drawSeason(g,room,top,height,seasonAt(season),time,sky.dark);
+    // Cloud/meeting panes extend below ordinary office windows. Anchor the
+    // foreground to each window group's own sill instead of a shared height.
+    const groups=new Map<string,typeof wins>();
+    for(const win of wins){const key=win.y+':'+win.h,list=groups.get(key)??[];list.push(win);groups.set(key,list);}
+    for(const group of groups.values()){
+      g.save();g.beginPath();for(const win of group)g.rect(win.x,win.y,win.w,win.h);g.clip();
+      drawSeason(g,room,group[0]!.y,group[0]!.h,seasonAt(season),time,sky.dark);g.restore();
+    }
     if (rain) this.rain(g, room, top, height, time);
     else this.flash = 0;
     g.restore();

@@ -222,7 +222,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       if (d.kind === "arcade") L.push({ x: d.x + d.w / 2, y: d.y + 34, r: 30, cut: 0.35 * night, color: C.plum3, glow: 0.16 * night, flat: 0.7 });
     }
     for (const w of crew.workers.values()) {
-      if (w.gone || w.leaving) continue;
+      if (w.gone || w.leaving || crew.unavailable(w)) continue;
       const scr = crew.screenOf(w, now);
       const glow = P.screenGlow(scr, w.agent);
       if (!glow) continue;
