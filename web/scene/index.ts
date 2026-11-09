@@ -348,7 +348,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     const pan = (cam.x - (room.x + room.w / 2)) * 1;
     const rain = weather ? weather === 'rain' : preferences.weather==='date'?rainyToday():preferences.weather==='rain';
     // ASCII keeps its windows empty: a sampled skyline is just noise
-    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, preferences.motion?now:0, pan, rain&&preferences.motion,preferences.season);
+    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, preferences.motion?now:0, pan, rain,preferences.season,preferences.ambience);
     if (asciiPass) {
       // only the outline plan: the ground stays blank in ASCII
       wg.drawImage(staticAscii!.c, origin.x, origin.y);

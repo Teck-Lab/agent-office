@@ -180,7 +180,7 @@ export class Sky {
   flash = 0;
   private nextBolt = 0;
 
-  draw(g: CanvasRenderingContext2D, wins: { x: number; y: number; w: number; h: number }[], room: { x: number; w: number }, top: number, height: number, sky0: SkyState, time: number, pan: number, rain = false, season:Parameters<typeof seasonAt>[0]='north') {
+  draw(g: CanvasRenderingContext2D, wins: { x: number; y: number; w: number; h: number }[], room: { x: number; w: number }, top: number, height: number, sky0: SkyState, time: number, pan: number, rain = false, season:Parameters<typeof seasonAt>[0]='north', ambience=true) {
     if(!wins.length){this.flash=0;return;}
     // Paint every exposed pixel, including the taller cloud and meeting panes.
     // Keep one continuous skyline; foreground details use each group's sill.
@@ -264,11 +264,12 @@ export class Sky {
     // foreground to each window group's own sill instead of a shared height.
     const groups=new Map<string,typeof wins>();
     for(const win of wins){const key=win.y+':'+win.h,list=groups.get(key)??[];list.push(win);groups.set(key,list);}
+    const fountainWindow=wins.reduce((best,win)=>win.w>best.w?win:best);
     for(const group of groups.values()){
       g.save();g.beginPath();for(const win of group)g.rect(win.x,win.y,win.w,win.h);g.clip();
-      drawSeason(g,room,group[0]!.y,group[0]!.h,seasonAt(season),time,sky.dark);g.restore();
+      drawSeason(g,room,group[0]!.y,group[0]!.h,seasonAt(season),time,sky.dark,{wet:rain,ambience,fountainX:group.includes(fountainWindow)?fountainWindow.x+fountainWindow.w/2:null});g.restore();
     }
-    if (rain) this.rain(g, room, top, height, time);
+    if (rain&&time>0) this.rain(g, room, top, height, time);
     else this.flash = 0;
     g.restore();
   }

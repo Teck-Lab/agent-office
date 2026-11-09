@@ -1,3 +1,4 @@
+import {drawPassers,drawWetPath,drawFountain} from './park-life.ts';
 /** Cosmetic only: consumes observed events; never sends work or completes tasks. */
 import type {OfficeEvent,Snapshot} from '../../src/shared/events.ts';
 import type {Worker} from './workers.ts';
@@ -13,10 +14,12 @@ export function seasonAt(choice:ViewPreferences['season'],date=new Date()):Seaso
  return (['winter','spring','summer','autumn'] as const)[(quarter+(choice==='south'?2:0))%4]!;
 }
 /** Drawn inside Sky's window clip. Still scenery remains when motion is disabled. */
-export function drawSeason(g:CanvasRenderingContext2D,room:{x:number;w:number},top:number,height:number,season:Season,time:number,dark:number){
+export function drawSeason(g:CanvasRenderingContext2D,room:{x:number;w:number},top:number,height:number,season:Season,time:number,dark:number,options:{wet?:boolean;ambience?:boolean;fountainX?:number|null}={}){
  const base=top+height,colors={spring:'#a7c67a',summer:'#418b6c',autumn:'#c98a50',winter:'#adbacd'};
  g.save();g.globalAlpha=1;
- const night=Math.min(1,dark/.68);
+ const night=Math.min(1,dark/.68),animationTime=options.ambience===false?0:time;
+ const fountainX=options.fountainX===undefined?room.x+room.w/2:options.fountainX;
+ const nearFountain=(x:number,radius:number)=>fountainX!==null&&Math.abs(x-fountainX)<radius;
  const grass=season==='winter'?mix('#c5d5e2','#748ba9',night):season==='autumn'?mix('#929065','#536653',night):mix('#7b9c70','#3c625a',night);
  const path=mix('#c5bcaa','#687993',night),edge=mix('#e1d4bd','#8a98ad',night);
  // A layered park edge gives the trees a place to stand and breaks up the city silhouettes.
@@ -26,21 +29,27 @@ export function drawSeason(g:CanvasRenderingContext2D,room:{x:number;w:number},t
  g.fillStyle=mix(grass,'#243d47',.18);g.fillRect(room.x,base-3,room.w,1);
  for(let i=0;i<Math.ceil(room.w/41);i++){
   const x=Math.floor(room.x+i*41+6),y=base-13;
+  if(nearFountain(x+6,18))continue;
   g.fillStyle=mix(grass,'#284e4e',.3);g.fillRect(x,y-3,12,4);g.fillRect(x+2,y-5,8,3);
   g.fillStyle=season==='winter'?'#dbe4ec':mix(grass,'#e5db9c',.3);g.fillRect(x+2,y-5,7,1);
   if(season==='spring'||season==='summer'){g.fillStyle=season==='spring'?'#e5b2c8':'#e9cd86';g.fillRect(x+3,y-3,1,1);g.fillRect(x+8,y-2,1,1);}
  }
  for(let i=0;i<Math.ceil(room.w/116);i++){
   const x=Math.floor(room.x+i*116+44);
+  if(nearFountain(x+10,25))continue;
   // Tiny benches sit on the pavement, with posts and warm lamps after dusk.
   g.fillStyle=mix('#9d8066','#596578',night);g.fillRect(x+10,base-12,11,2);g.fillRect(x+9,base-9,13,2);
   g.fillStyle='#455563';g.fillRect(x+11,base-7,1,2);g.fillRect(x+20,base-7,1,2);g.fillRect(x,base-24,1,17);g.fillRect(x-2,base-25,5,1);
   if(night>.15){g.globalAlpha=night*.2;g.fillStyle='#f7d896';g.fillRect(x-5,base-27,11,8);g.fillRect(x-3,base-8,7,2);g.globalAlpha=1;}
   g.fillStyle=night>.15?'#f7d896':'#e0dbba';g.fillRect(x-1,base-24,3,2);
  }
+ drawWetPath(g,room,base,animationTime,night,options.wet===true,fountainX);
+ if(fountainX!==null)drawFountain(g,fountainX,base,animationTime,night,season==='winter');
+ drawPassers(g,room,base,animationTime,options.ambience!==false);
  g.globalAlpha=1-dark*.25;
  for(let i=0;i<Math.ceil(room.w/57);i++){
   const x=Math.floor(room.x+i*57+19),y=base-5-(i%3)*3;
+  if(nearFountain(x,23))continue;
   g.fillStyle='#584b54';g.fillRect(x,y-17,2,base-(y-17));
   g.fillStyle=colors[season];g.fillRect(x-7,y-19,16,10);g.fillRect(x-4,y-23,10,5);g.fillRect(x-10,y-15,22,7);
   if(season==='spring'){g.fillStyle='#edb9ca';for(const [dx,dy]of [[-5,-18],[4,-19],[-2,-13],[7,-12]])g.fillRect(x+dx!,y+dy!,2,2);}

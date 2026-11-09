@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const dir=mkdtempSync(join(tmpdir(),'office-view-')),file=join(dir,'test.mjs');after(()=>rmSync(dir,{recursive:true,force:true}));
-await build({stdin:{contents:'export * from "./web/scene/office-details.ts";export * from "./web/ui/state.ts";export * from "./web/scene/presentation.ts";export * from "./web/scene/sky.ts";export * from "./web/scene/workers.ts";export * from "./web/scene/meeting-room.ts";export * from "./web/ui/appearance.ts";',resolveDir:fileURLToPath(new URL('..',import.meta.url)),loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:file,logLevel:'error',loader:{'.svg':'text'}});
-const {Sky,drawPersonalDesk,Handoffs,seasonAt,drawSeason,deskIdentity,OfficeModel,Crew,DEFAULT_VIEW,cleanView,viewHour,skyAt,visualState,meetingRoom,meetingSeats,meetingTable,createAppearance}=await import(pathToFileURL(file));
+await build({stdin:{contents:'export * from "./web/scene/park-life.ts";export * from "./web/scene/office-details.ts";export * from "./web/ui/state.ts";export * from "./web/scene/presentation.ts";export * from "./web/scene/sky.ts";export * from "./web/scene/workers.ts";export * from "./web/scene/meeting-room.ts";export * from "./web/ui/appearance.ts";',resolveDir:fileURLToPath(new URL('..',import.meta.url)),loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:file,logLevel:'error',loader:{'.svg':'text'}});
+const {parkTraffic,drawPassers,drawWetPath,drawFountain,Sky,drawPersonalDesk,Handoffs,seasonAt,drawSeason,deskIdentity,OfficeModel,Crew,DEFAULT_VIEW,cleanView,viewHour,skyAt,visualState,meetingRoom,meetingSeats,meetingTable,createAppearance}=await import(pathToFileURL(file));
 const host={kind:'docker-sandbox',id:'sandbox',name:'Sandbox'},ts=new Date().toISOString();
 const coord=(role,runId='run_1')=>({role,runId,...(role==='coordinator'?{}:{taskId:'task_1',dispatchId:'ctx_1'})});
 const worker=(id,extra={})=>({workerId:id,agent:'omp',project:'Repo',host,placement:'cloud',status:'idle',lastTs:ts,toolCalls:0,tokens:0,filesTouched:0,...extra});
@@ -198,4 +198,39 @@ test('sky paints an opaque background across every exposed pixel of mixed-height
  try{for(const hour of [6,12,18,23]){covered.clear();new Sky(7).draw(g,windows,{x:0,w:100},12,60,skyAt(hour),0,0,false,'autumn');
   for(const r of windows)for(let y=r.y;y<r.y+r.h;y++)for(let x=r.x;x<r.x+r.w;x++)assert.ok(covered.has(x+':'+y),'unpainted outdoor pixel at '+x+','+y+' hour '+hour);
  }}finally{globalThis.document=previous;}
+});
+
+
+function recordedPark(draw){
+ const ops=[],stack=[],g={globalAlpha:1,save(){stack.push(this.globalAlpha)},restore(){this.globalAlpha=stack.pop()},fillRect(x,y,w,h){assert.ok([x,y,w,h].every(Number.isFinite));assert.ok(w>0&&h>0);ops.push({color:this.fillStyle,alpha:this.globalAlpha,x,y,w,h});}};
+ draw(g);assert.equal(g.globalAlpha,1,'renderer restores alpha');return ops;
+}
+test('park traffic is sparse, deterministic, pauses between visits and obeys ambient/motion controls',()=>{
+ const room={x:-164,w:800};assert.deepEqual(parkTraffic(room,0),[]);assert.deepEqual(parkTraffic(room,100000,false),[]);
+ let walkers=0,cyclists=0,quiet=0;
+ for(let t=0;t<360000;t+=1000){const people=parkTraffic(room,t);assert.ok(people.length<=2);assert.equal(new Set(people.map(p=>p.kind)).size,people.length);assert.deepEqual(people,parkTraffic(room,t));
+ for(const p of people){assert.ok(p.x>=room.x-12&&p.x<=room.x+room.w+12);if(p.kind==='walker')walkers++;else cyclists++;}if(!people.length)quiet++;}
+ assert.ok(walkers&&cyclists&&quiet);
+ const a=parkTraffic(room,30000),b=parkTraffic(room,31000);assert.ok(b.find(p=>p.kind==='walker').x>a.find(p=>p.kind==='walker').x);assert.ok(b.find(p=>p.kind==='cyclist').x<a.find(p=>p.kind==='cyclist').x);
+ const pixels=recordedPark(g=>drawPassers(g,room,88,30000,true));assert.ok(pixels.length>15);assert.ok(pixels.every(p=>p.y+p.h<=85),'feet and wheels stay on pavement');
+ assert.deepEqual(recordedPark(g=>drawPassers(g,room,88,0,true)),[]);
+});
+test('wet reflections only appear for wet weather and remain still without motion',()=>{
+ const room={x:0,w:300};assert.deepEqual(recordedPark(g=>drawWetPath(g,room,88,1000,1,false)),[]);
+ const still=recordedPark(g=>drawWetPath(g,room,88,0,1,true)),moving=recordedPark(g=>drawWetPath(g,room,88,1000,1,true));assert.ok(still.length>0&&moving.length>still.length);
+ assert.ok(moving.every(p=>p.y>=80&&p.y+p.h<=85),'reflections stay inside the path');
+ assert.deepEqual(still,recordedPark(g=>drawWetPath(g,room,88,0,1,true)));
+ const hiddenLamp=recordedPark(g=>drawWetPath(g,room,88,0,1,true,54));assert.equal(hiddenLamp.filter(p=>p.color==='#f7d896'&&p.x<70).length,0,'no reflection from a lamp removed for the fountain');
+});
+test('fountain water animates without changing its footprint; winter is frozen',()=>{
+ const a=recordedPark(g=>drawFountain(g,100,88,0,.5,false)),b=recordedPark(g=>drawFountain(g,100,88,480,.5,false));assert.notDeepEqual(a,b);
+ assert.ok([...a,...b].every(p=>p.x>=90&&p.x+p.w<=110&&p.y>=65&&p.y+p.h<=81));
+ const ice=recordedPark(g=>drawFountain(g,100,88,0,.5,true));assert.deepEqual(ice,recordedPark(g=>drawFountain(g,100,88,480,.5,true)));assert.ok(ice.every(p=>p.y>=74),'winter has no flowing jet');
+});
+test('reduced-motion rain keeps wet scenery but produces no rain animation or lightning',()=>{
+ const previous=globalThis.document,noop=()=>{},atlas={fillRect:noop,drawImage:noop};globalThis.document={createElement:()=>({width:1,height:1,getContext:()=>atlas})};
+ try{const sky=new Sky(7);sky.rain=()=>{throw Error('rain must not animate at time zero');};
+ const g={save:noop,restore:noop,beginPath:noop,rect:noop,clip:noop,arc:noop,fill:noop,drawImage:noop,fillRect:noop};
+ sky.draw(g,[{x:0,y:8,w:100,h:80}],{x:0,w:100},12,60,skyAt(23),0,0,true,'autumn',false);assert.equal(sky.flash,0);
+ }finally{globalThis.document=previous;}
 });
