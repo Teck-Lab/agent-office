@@ -565,7 +565,7 @@ function platform(g: CanvasRenderingContext2D, b: Block, ascii: boolean) {
 }
 
 /** The platform's name as a cloud pod's sign spells it, in small caps before the sandbox name. */
-export const PLATFORM_TAG: Record<string, string> = { ssh: "SSH", daytona: "DAYTONA", boat: "BOAT", railway: "RAILWAY", vercel: "VERCEL" };
+export const PLATFORM_TAG: Record<string, string> = { "docker-sandbox": "DOCKER", ssh: "SSH", daytona: "DAYTONA", boat: "BOAT", railway: "RAILWAY", vercel: "VERCEL" };
 
 function sign(g: CanvasRenderingContext2D, b: Block) {
   const f = FONT(), m = MICRO();

@@ -28,6 +28,49 @@ export interface Host {
   name: string;
 }
 
+/** Logical Orca ownership is independent of the machine that executes the worker. */
+export interface OrcaCoordination {
+  role: "coordinator" | "executor" | "planner" | "researcher" | "reviewer" | "publisher";
+  runId?: string;
+  taskId?: string;
+  dispatchId?: string;
+  issue?: string;
+}
+export type Placement = "office" | "cloud";
+const ORCA_ROLES = new Set(["coordinator","executor","planner","researcher","reviewer","publisher"]);
+const ORCA_ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$/;
+export function cleanOrchestration(value: unknown): OrcaCoordination | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.role !== "string" || !ORCA_ROLES.has(v.role)) return null;
+  const out: OrcaCoordination = { role: v.role as OrcaCoordination["role"] };
+  for (const key of ["runId","taskId","dispatchId"] as const) {
+    if (v[key] !== undefined) {
+      if (typeof v[key] !== "string" || !ORCA_ID.test(v[key])) return null;
+      out[key] = v[key];
+    }
+  }
+  if (out.role !== "coordinator" && (!out.runId || !out.taskId || !out.dispatchId)) return null;
+  if (v.issue !== undefined) {
+    if (typeof v.issue !== "string" || v.issue.length > 256 || !/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/[1-9]\d*$/.test(v.issue)) return null;
+    out.issue = v.issue;
+  }
+  return out;
+}
+
+/** A native ownership subtree, bounded by the supplied workers and safe against cycles. */
+export function nativeFamilyIds(root: string, workers: Iterable<{ workerId: string; parentId?: string }>): string[] {
+  const children = new Map<string, string[]>();
+  for (const w of workers) if (w.parentId) {
+    const list = children.get(w.parentId) ?? []; list.push(w.workerId); children.set(w.parentId, list);
+  }
+  const family = [root], seen = new Set(family);
+  for (let i = 0; i < family.length; i++) for (const id of children.get(family[i]!) ?? []) {
+    if (!seen.has(id)) { seen.add(id); family.push(id); }
+  }
+  return family;
+}
+
 export type ToolCategory =
   | "read"    // Read, read_file, cat-like tools
   | "edit"    // Edit, Write, MultiEdit, apply_patch, write_file, NotebookEdit
@@ -74,6 +117,10 @@ export interface OfficeEvent {
   project: string;
   /** Set for workers in a sandbox or on another machine. */
   host?: Host;
+  /** Rendering placement; the real execution host is retained above. */
+  placement?: Placement;
+  /** null clears a previously bound assignment after revocation/rebinding. */
+  orchestration?: OrcaCoordination | null;
   /** Full cwd, shown only in the inspector. */
   cwd?: string;
   model?: string;
@@ -129,6 +176,10 @@ export interface WorkerState {
   agent: AgentKind;
   project: string;
   host?: Host;
+  /** Rendering placement; the real execution host is retained above. */
+  placement?: Placement;
+  /** null clears a previously bound assignment after revocation/rebinding. */
+  orchestration?: OrcaCoordination | null;
   /** Last status line / mood the agent set through MCP, if any. */
   mood?: string;
   cwd?: string;

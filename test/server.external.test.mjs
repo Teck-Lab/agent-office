@@ -82,3 +82,44 @@ test('unknown payload fields never enter the office snapshot', async t => {
   assert.ok(!JSON.stringify(state.snapshot()).includes(secret));
   assert.ok(!JSON.stringify(state.snapshot()).includes('/private/root'));
 });
+
+
+test('Orca placement is separate from the server-owned sandbox and preserves bounded lifecycle IDs',async t=>{
+  const {state,send}=await office(t);
+  const orchestration={role:'coordinator',runId:'run-one',extra:'discard-me'};
+  assert.equal((await send({events:[event('session_start','coordinator',{orchestration,placement:'cloud'}),event('subagent_start','helper',{parentId:'coordinator',orchestration,role:'researcher'}),event('session_start','executor',{orchestration:{role:'executor',runId:'run-one',taskId:'task-one',dispatchId:'dispatch-one'},placement:'office'})]})).status,202);
+  const [coordinator,helper,executor]=state.snapshot().workers;
+  assert.equal(coordinator.placement,'office');assert.equal(coordinator.host.kind,'docker-sandbox');
+  assert.equal(helper.placement,'office');assert.equal(helper.parentId,coordinator.workerId);
+  assert.equal(executor.placement,'cloud');assert.equal(executor.parentId,undefined);
+  assert.equal(executor.orchestration.dispatchId,'dispatch-one');assert.equal(coordinator.orchestration.extra,undefined);
+  assert.equal((await send({events:[event('thinking','coordinator',{orchestration:null,placement:'office'})]})).status,202);
+  const cleared=state.snapshot().workers.find(w=>w.workerId===coordinator.workerId);
+  assert.equal(cleared.orchestration,null);assert.equal(cleared.placement,'cloud');
+  assert.equal((await send({events:[event('session_start','invalid',{orchestration:{role:'executor',runId:'run-one'}})]})).status,400);
+});
+
+
+test('late same-room Run binding refreshes idle native descendants and revocation clears them',async t=>{
+  const {state,send}=await office(t);
+  assert.equal((await send({events:[event('session_start','main',{orchestration:{role:'coordinator'}}),event('subagent_start','child',{parentId:'main'}),event('subagent_start','deep',{parentId:'child'})]})).status,202);
+  const childBefore=state.snapshot().workers.find(w=>w.parentId?.endsWith(':main'));
+  assert.equal((await send({events:[event('thinking','main',{orchestration:{role:'coordinator',runId:'run-late'}})]})).status,202);
+  for(const w of state.snapshot().workers){assert.equal(w.orchestration.runId,'run-late');assert.equal(w.placement,'office');}
+  const childAfter=state.snapshot().workers.find(w=>w.workerId===childBefore.workerId);
+  assert.equal(childAfter.lastTs,childBefore.lastTs);assert.equal(childAfter.toolCalls,childBefore.toolCalls);
+  assert.equal((await send({events:[event('thinking','main',{orchestration:null})]})).status,202);
+  for(const w of state.snapshot().workers){assert.equal(w.orchestration,null);assert.equal(w.placement,'cloud');}
+  assert.equal((await send({events:[event('thinking','deep',{parentId:'child',orchestration:{role:'coordinator',runId:'stale'}})]})).status,202);
+  const deep=state.snapshot().workers.find(w=>w.workerId.endsWith(':deep'));
+  assert.equal(deep.orchestration,null);assert.equal(deep.placement,'cloud');
+});
+
+test('ending a native root retires every descendant, with cycle-safe cleanup',async t=>{
+  const {state,send}=await office(t);
+  await send({events:[event('session_start'),event('subagent_start','child',{parentId:'main'}),event('subagent_start','deep',{parentId:'child'})]});
+  await send({events:[event('session_end')]});assert.equal(state.size,0);
+  assert.ok(state.snapshot().recent.some(e=>e.kind==='subagent_end'&&e.workerId.endsWith(':deep')));
+  await send({events:[event('subagent_start','cycle-a',{parentId:'cycle-b'}),event('subagent_start','cycle-b',{parentId:'cycle-a'})]});
+  await send({events:[event('session_end','cycle-a')]});assert.equal(state.size,0);
+});

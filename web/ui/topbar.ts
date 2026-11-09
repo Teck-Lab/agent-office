@@ -15,7 +15,7 @@ import { Ticker } from "./ticker.ts";
 
 const AGENTS = Object.keys(BRAND) as AgentKind[];
 const ORIGINALS: AgentKind[] = ["claude", "commandcode", "codex"];
-const HOST_ORDER: RemoteKind[] = ["daytona", "boat", "railway", "vercel", "ssh"];
+const HOST_ORDER: RemoteKind[] = ["docker-sandbox", "daytona", "boat", "railway", "vercel", "ssh"];
 
 interface Stat {
   el: HTMLElement;

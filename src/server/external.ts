@@ -2,7 +2,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { readFileSync, lstatSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { Host, RawEvent } from '../shared/events.ts';
+import { cleanOrchestration, type Host, type RawEvent } from '../shared/events.ts';
 import type { OfficeState } from './state.ts';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$/;
@@ -75,11 +75,14 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
             typeof value.kind !== 'string' || !kinds.has(value.kind) || typeof value.agent !== 'string' || !agents.has(value.agent) ||
             typeof value.ts !== 'string' || !Number.isFinite(Date.parse(value.ts)) || Math.abs(now() - Date.parse(value.ts)) > 120_000 ||
             (value.category !== undefined && (typeof value.category !== 'string' || !categories.has(value.category)))) return reply(res, 400, 'Invalid event');
+        const orchestration = cleanOrchestration(value.orchestration);
+        if (value.orchestration !== undefined && value.orchestration !== null && !orchestration) return reply(res, 400, 'Invalid Orca ownership');
         const prefix = `external:${sourceId}:`;
         pending.push({ id: `${sourceId}:${value.eventId}`, event: {
           ts: value.ts, agent: value.agent as RawEvent['agent'], workerId: prefix + value.workerId,
           ...(value.parentId ? { parentId: prefix + value.parentId } : {}), kind: value.kind as RawEvent['kind'],
           project: label(source.project)!, host: { ...source.host, name: label(source.host.name)! },
+          orchestration, placement: orchestration?.role === 'coordinator' ? 'office' : 'cloud',
           ...(value.tool ? { tool: label(value.tool, 48) } : {}),
           ...(value.category ? { category: value.category as RawEvent['category'] } : {}),
           ...(value.summary ? { summary: label(value.summary) } : {}),

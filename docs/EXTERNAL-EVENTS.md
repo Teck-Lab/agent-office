@@ -12,4 +12,14 @@ The server owns project and host metadata and prefixes worker/parent identifiers
 
 No browser Origin/Sec-Fetch-Site is accepted. Batches are limited to 64 KiB and validated before any event is applied. This credential grants ingestion only, never terminal, approval, key or sandbox control. The ordinary office stays unchanged unless external ingestion is explicitly enabled.
 
-For the local Teck setup, Orca starts one host service and opens a reverse SSH tunnel per owned running Docker Sandbox: guest loopback port 19474 forwards to the host service. The OMP extension posts to that loopback endpoint; no host LAN listener, inbound firewall opening, cloud service or sandbox credentials for other services are required. Existing OMP sessions need reload/reopening to load a newly installed extension.
+For the local Teck setup, Orca starts one host service and opens a reverse SSH tunnel per owned running Docker Sandbox: a fresh guest loopback port, recorded in /etc/teck-orca/office.json, forwards to the host service. The OMP extension posts to that loopback endpoint; no host LAN listener, inbound firewall opening, cloud service or sandbox credentials for other services are required. With OMP 18.16.0, existing sessions must be reopened/resumed to load a newly installed extension; /reload-plugins does not reload extension code.
+
+## Orca coordination layout
+
+The observer reads the role guard's `teck-orca-contract` session entry rather than guessing from prompts or model names. Optional `orchestration` metadata carries a bounded role, Run ID, Task ID, Dispatch ID and GitHub issue URL. Worker roles require all three lifecycle IDs. A coordinator's Run ID is supplied from its confirmed run-create receipt. `orchestration: null` clears a revoked or unbound role. These fields describe ownership; they grant no execution privileges.
+
+The server derives rendering `placement`: coordinators and their native task helpers sit in the office; dispatched workers and their native helpers sit in the sandbox's cloud pod. The real Docker Sandbox `host` remains on every event, snapshot and inspector card. Caller-provided placement cannot override that derivation. Native `parentId` links stay separate from Orca Run/Task/Dispatch relationships, so a dispatched executor is a main desk rather than a native intern.
+
+Late role binding moves an existing native family between rooms without replacing worker IDs or duplicating desks. Nested task helpers share the owning main's bench. Selecting a worker highlights native family members and other dispatched workers with the same confirmed Run ID. The inspector shows the role and lifecycle IDs alongside the real host.
+
+Native task subagents have documented lifecycle events and are represented independently. Built-in advisors do not expose an equivalent public start/end lifecycle in the tested OMP version; advisory work remains attributed to its owning session rather than inventing advisor lifetimes.

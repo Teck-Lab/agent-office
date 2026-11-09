@@ -17,7 +17,7 @@
  * the floor jitter. Seats are live views on their pod, so a seated worker
  * rides along. Coordinates are art pixels; y grows down, feet are anchors.
  */
-import type { AgentKind, Host } from "../../src/shared/events.ts";
+import type { AgentKind, Host, Placement } from "../../src/shared/events.ts";
 import { hash } from "./util.ts";
 
 export const WALL_H = 78;
@@ -127,7 +127,7 @@ const signW = (label: string, marks = 1) => 22 + [...label].length * 6 + (marks 
 /** How far each extra mark on a shared pod's sign is stepped right. */
 export const MARK_STEP = 8;
 /** Room a cloud pod's sign needs for its platform tag ("RAILWAY ", 3x5 caps at 4 px a letter). */
-const TAG_LEN: Record<string, number> = { ssh: 3, daytona: 7, boat: 4, railway: 7, vercel: 6 };
+const TAG_LEN: Record<string, number> = { "docker-sandbox": 6, ssh: 3, daytona: 7, boat: 4, railway: 7, vercel: 6 };
 export const tagW = (b: { zone: Zone; host?: Host }) => (b.zone === "cloud" && b.host && b.host.kind !== "local" ? (TAG_LEN[b.host.kind] ?? 0) * 4 + 4 : 0);
 const stationW = (s: Station) => (s.hot ? Math.max(1, s.seats) * SEAT_W : DESK_W + (s.seats ? BENCH_GAP + s.seats * SEAT_W : 0));
 /** Where a station's bench starts, relative to the station. */
@@ -311,17 +311,17 @@ export class Layout {
 
   /* ----------------------------------------------------------- seating */
 
-  private podFor(agent: AgentKind, project: string, host: Host | undefined, now: number): Block {
-    if (host && host.kind !== "local") {
+  private podFor(agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement): Block {
+    if (placement !== "office" && host && host.kind !== "local") {
       const key = "host:" + host.id;
       const have = this.blocks.get(key);
       if (have) { have.dying = false; return have; }
       return this.newBlock(key, "cloud", agent, project, host, cloudLabel(host));
     }
     for (let n = 0; n < 20; n++) {
-      const key = `local:${project}:${n}`;
+      const key = placement === "office" && host ? `office:${host.id}:${project}:${n}` : `local:${project}:${n}`;
       const b = this.blocks.get(key);
-      if (!b) return this.newBlock(key, "local", agent, project, undefined, n ? `${project} ${n + 1}` : project);
+      if (!b) return this.newBlock(key, "local", agent, project, host, n ? `${project} ${n + 1}` : project);
       const desks = b.stations.filter((s) => !s.hot);
       if (desks.length < MAX_STATIONS || desks.some((s) => !s.main && !s.interns.some(Boolean))) {
         b.dying = false;
@@ -329,7 +329,7 @@ export class Layout {
       }
     }
     void now;
-    return this.newBlock(`local:${project}:x${this.nextPos}`, "local", agent, project, undefined, project);
+    return this.newBlock(`office:${host?.id ?? "local"}:${project}:x${this.nextPos}`, "local", agent, project, host, project);
   }
 
   private newBlock(key: string, zone: Zone, agent: AgentKind, project: string, host: Host | undefined, label: string): Block {
@@ -342,10 +342,10 @@ export class Layout {
     return b;
   }
 
-  allocMain(id: string, agent: AgentKind, project: string, host: Host | undefined, now: number): Seat {
+  allocMain(id: string, agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement): Seat {
     const have = this.seats.get(id);
     if (have) return have;
-    const b = this.podFor(agent, project, host, now);
+    const b = this.podFor(agent, project, host, now, placement);
     let st = b.stations.find((s) => !s.hot && !s.main && !s.interns.some(Boolean));
     if (!st) {
       st = { main: null, interns: [], seats: 0, ox: 0, x: NaN, oy: 0, y: NaN, emptyAt: 0, benchAt: 0 };
@@ -362,11 +362,11 @@ export class Layout {
     return s;
   }
 
-  allocIntern(id: string, parentId: string, agent: AgentKind, project: string, host: Host | undefined, now: number): Seat {
+  allocIntern(id: string, parentId: string, agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement): Seat {
     const have = this.seats.get(id);
     if (have) return have;
     const ps = this.seats.get(parentId);
-    if (!ps || ps.kind !== "main") return this.allocMain(id, agent, project, host, now);
+    if (!ps) return this.allocMain(id, agent, project, host, now, placement);
     const b = ps.block;
     // the parent's own bench, then any hot desk in the pod with room, then a new hot desk
     const benches = [ps.st, ...b.stations.filter((s) => s.hot)];
@@ -432,13 +432,11 @@ export class Layout {
   }
 
   setOffline(hostId: string, offline: boolean, now: number) {
-    const b = this.blocks.get("host:" + hostId);
-    if (!b || b.offline === offline) return;
-    b.offline = offline;
-    b.rev++;
-    this.dirty = true;
-    // back online: a ghost desk kept for the dark pod may now be cleared away
-    if (!offline) for (const st of b.stations) if (st.emptyAt === Infinity) st.emptyAt = now;
+    for (const b of this.blocks.values()) {
+      if (b.host?.id !== hostId || b.offline === offline) continue;
+      b.offline = offline; b.rev++; this.dirty = true;
+      if (!offline) for (const st of b.stations) if (st.emptyAt === Infinity) st.emptyAt = now;
+    }
   }
 
   /** An empty, dimmed pod for a remote that dropped while nobody worked there. */
