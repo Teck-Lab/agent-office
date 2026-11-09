@@ -187,3 +187,15 @@ test('all tree trunks meet the ground in both ordinary and taller cloud windows'
  assert.deepEqual([...bottoms].sort((a,b)=>a-b),[72,88]);assert.equal(heights.size,3,'height variation is preserved without lifting the roots');
  }finally{globalThis.document=previous;}
 });
+
+
+test('sky paints an opaque background across every exposed pixel of mixed-height windows',()=>{
+ const previous=globalThis.document,noop=()=>{},atlas={fillRect:noop,drawImage:noop};
+ globalThis.document={createElement:()=>({width:1,height:1,getContext:()=>atlas})};
+ const windows=[{x:0,y:12,w:45,h:60},{x:55,y:8,w:45,h:80}],covered=new Set(),states=[];let path=[],clips=[];
+ const g={globalAlpha:1,save(){states.push({clips,alpha:this.globalAlpha})},restore(){const s=states.pop();clips=s.clips;this.globalAlpha=s.alpha},beginPath(){path=[]},rect(x,y,w,h){path.push({x,y,w,h})},clip(){clips=[...clips,path]},arc:noop,fill:noop,drawImage:noop,
+ fillRect(x,y,w,h){if(this.globalAlpha!==1)return;for(let py=Math.ceil(y);py<y+h;py++)for(let px=Math.ceil(x);px<x+w;px++)if(clips.every(group=>group.some(r=>px>=r.x&&px<r.x+r.w&&py>=r.y&&py<r.y+r.h)))covered.add(px+':'+py);}};
+ try{for(const hour of [6,12,18,23]){covered.clear();new Sky(7).draw(g,windows,{x:0,w:100},12,60,skyAt(hour),0,0,false,'autumn');
+  for(const r of windows)for(let y=r.y;y<r.y+r.h;y++)for(let x=r.x;x<r.x+r.w;x++)assert.ok(covered.has(x+':'+y),'unpainted outdoor pixel at '+x+','+y+' hour '+hour);
+ }}finally{globalThis.document=previous;}
+});

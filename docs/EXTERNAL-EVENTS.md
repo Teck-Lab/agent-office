@@ -190,6 +190,11 @@ spam. Producers cannot submit host_status or impersonate another source's health
 Source-scoped snapshots filter health records as well as workers and meetings.
 
 Validation: full isolated Linux suite 553 passed, 2 skipped; final focused suite
-74 passed including renderer bounds/clipping and grounded tree trunks in both window heights; plugin suite 283 passed. Production
+75 passed including renderer bounds/clipping and grounded tree trunks in both window heights; plugin suite 283 passed. Production
 build, typecheck, served asset hash and live observer status verified. No visual
 browser inspection was performed.
+
+Outdoor rendering covers the full height of both ordinary and cloud/meeting
+panes, including an opaque background behind the seasonal foreground. Paths,
+shrubs, benches and warm evening lamps add detail below the skyline. Coverage
+tests check dawn, day, dusk and night; no live weather service is involved.

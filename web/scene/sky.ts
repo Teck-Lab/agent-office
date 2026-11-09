@@ -181,6 +181,11 @@ export class Sky {
   private nextBolt = 0;
 
   draw(g: CanvasRenderingContext2D, wins: { x: number; y: number; w: number; h: number }[], room: { x: number; w: number }, top: number, height: number, sky0: SkyState, time: number, pan: number, rain = false, season:Parameters<typeof seasonAt>[0]='north') {
+    if(!wins.length){this.flash=0;return;}
+    // Paint every exposed pixel, including the taller cloud and meeting panes.
+    // Keep one continuous skyline; foreground details use each group's sill.
+    const bottom=Math.max(top+height,...wins.map(win=>win.y+win.h));
+    top=Math.min(top,...wins.map(win=>win.y));height=bottom-top;
     // rain greys the sky and hides sun and stars
     const sky = rain ? { ...sky0, top: mix(sky0.top, C.slate2, 0.35), mid: mix(sky0.mid, C.slate3, 0.4), low: mix(sky0.low, C.slate3, 0.45), stars: 0, sun: sky0.sun * 0.2 } : sky0;
     this.build(room.w, height, sky);
