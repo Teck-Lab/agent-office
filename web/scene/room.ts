@@ -678,13 +678,6 @@ function logoMark(agent: AgentKind, px: number): Bitmap {
 export function drawLive(g: CanvasRenderingContext2D, p: RoomPlan, t: number, now: Date, board: Board, activity: number, ascii = false, planSummary:WhiteboardSummary|null=null) {
   P.clockHands(g, p.clock.x, p.clock.y, now);
   if (p.sign) neonSign(g, p.sign, t, ascii);
-  else {
-    // no wall for the neon: the command on a small plate under the TV
-    const m = MICRO(), cmd = "NPX THEAGENTOFFICE";
-    const w = measure(m, cmd) + 6, x = p.tv.x + Math.floor((p.tv.w - w) / 2), y = p.tv.y + p.tv.h + 7;
-    r(g, x, y, w, 9, C.ink);
-    drawText(g, m, cmd, x + 3, y + 2, ascii ? C.slate5 : "#7ef6ff");
-  }
   if (ascii) return; // the label pass writes the TV as real text
   P.rackLeds(g, p.rack.x, p.rack.y, t, activity);
   tvScreen(g, p.tv, t, board, planSummary);
