@@ -8,7 +8,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 const root=fileURLToPath(new URL('..',import.meta.url)),dir=mkdtempSync(join(tmpdir(),'office-whiteboard-test-')),file=join(dir,'mod.mjs');
 after(()=>rmSync(dir,{recursive:true,force:true}));
 await build({stdin:{contents:'export * from "./web/ui/whiteboard-model.ts";export * from "./web/ui/whiteboard.ts";export * from "./web/ui/state.ts";export * from "./web/scene/whiteboard.ts";export {plan as roomPlan} from "./web/scene/room.ts";export {FLOOR_TOP,WALL_H} from "./web/scene/layout.ts";',resolveDir:root,loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:file,logLevel:'error',loader:{'.svg':'text'}});
-const {boardViews,createWhiteboard,OfficeModel,whiteboardRect,roomPlan,WALL_H,FLOOR_TOP}=await import(pathToFileURL(file).href);
+const {boardViews,createWhiteboard,OfficeModel,drawWhiteboard,roomPlan,WALL_H,FLOOR_TOP}=await import(pathToFileURL(file).href);
 const goal=(objective,status='active')=>({id:'goal-'+objective,objective,status});
 const plan={goal:goal('Delivery'),phases:[{name:'Acceptance',tasks:[{content:'Tests',status:'completed'},{content:'Review',status:'in_progress'},{content:'Restore',status:'blocked',blocker:'Needs backup'}]}]};
 const worker=(workerId,runId,role='coordinator',extra={})=>({workerId,agent:'omp',project:'Teck.Monorepo',status:'waiting',toolCalls:0,tokens:0,filesTouched:0,lastTs:new Date().toISOString(),host:{kind:'docker-sandbox',id:'host-a',name:'sandbox'},orchestration:{role,runId,...(role!=='coordinator'?{taskId:'task-'+workerId,dispatchId:'dispatch-'+workerId}:{})},...extra});
@@ -27,12 +27,15 @@ test('live plan updates and reconnect preserve plans without claiming a turn or 
   assert.deepEqual(m.get('a').plan,updated);assert.equal(m.get('a').status,'tool_start');assert.equal(m.get('a').tool,'orca');assert.equal(m.get('a').toolCalls,0);assert.equal(m.get('a').lastTs,a.lastTs);
   assert.equal(boardViews(m.workers.values())[0].completed,1,'paused goal does not complete native tasks');
 });
-test('the board has its own bay left of the elevator, aligned with the TV, without moving pods',()=>{
-  for(const w of [240,330,500,1000]){
-    const main={x:0,y:0,w,h:400},r=whiteboardRect(main),p=roomPlan(main,null,main);
-    assert.ok(r.x>=p.main.x&&r.x+r.w<p.elevator.x);assert.equal(r.y,p.tv.y);assert.ok(r.y+r.h<WALL_H);assert.ok(r.y+r.h<FLOOR_TOP);
-    assert.equal(p.elevator.x,main.x+12);assert.equal(p.main.x+p.main.w,main.x+main.w);assert.equal(p.room.x,p.main.x);
-  }
+test('the plan shares the original TV while meeting windows occupy the former board bay',()=>{
+ for(const w of [240,330,500,1000]){
+   const main={x:0,y:0,w,h:198},p=roomPlan(main,null,main);
+   assert.equal(p.whiteboard,undefined,'no second wall-mounted board');
+   assert.ok(p.meeting.x+p.meeting.w<p.elevator.x);assert.ok(p.meeting.y+p.meeting.h<=main.h);
+   assert.equal(p.tv.y,10);assert.equal(p.tv.w,w>=460?132:100);assert.ok(p.tv.y+p.tv.h<WALL_H);
+   assert.equal(p.elevator.x,main.x+12);assert.equal(p.main.x+p.main.w,main.x+main.w);assert.equal(p.room.x,p.main.x);
+   const panes=p.windows.filter(r=>r.x<p.elevator.x);assert.ok(panes.length>=3);assert.ok(panes.every(r=>r.y===8&&r.h===WALL_H-14&&r.x>=p.meeting.x&&r.x+r.w<=p.meeting.x+p.meeting.w));
+ }
 });
 // Exercise the real modal with a small DOM stand-in; no browser or computer control.
 class Node {

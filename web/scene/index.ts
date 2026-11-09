@@ -21,9 +21,9 @@ import { Ascii } from "./ascii.ts";
 import { furnitureFigures, workerFigures } from "./figures.ts";
 import { Crt } from "./crt.ts";
 import * as R from "./room.ts";
-import {drawMeetingRoom,meetingRoom,meetingSeats} from './meeting-room.ts';
+import {drawMeetingRoom,meetingSeats} from './meeting-room.ts';
 import type {OfficeMeeting} from '../../src/shared/meetings.ts';
-import {drawWhiteboard,type WhiteboardSummary} from "./whiteboard.ts";
+import {type WhiteboardSummary} from "./whiteboard.ts";
 import * as P from "./props.ts";
 import { DESK_W, POD_H, WALL_H, deskTop } from "./layout.ts";
 import { BRAND, HOST_BRAND } from "../../src/shared/events.ts";
@@ -92,7 +92,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   let meetings:OfficeMeeting[]=[],meetingKey='';
   const activeMeeting=()=>meetings.find(m=>m.sourceId+':'+m.id===meetingKey)??meetings[0]??null;
   let boardSummary:WhiteboardSummary|null=null, boardCb:(()=>void)|null=null;
-  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y),r=meetingRoom(plan.whiteboard);return wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h;};
+  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y);return [plan.meeting,plan.tv].some(r=>wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h);};
   let selectCb: ((id: string | null) => void) | null = null;
   let hoverCb: ((id: string | null) => void) | null = null;
   let labelBoxes: { x: number; y: number; w: number; h: number; id?: string }[] = [];
@@ -132,8 +132,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   /** x extent of the pods plus a margin, so auto-fit never crops a desk. */
   function podSpan(): { x0: number; x1: number } | undefined {
-    // Keep the whiteboard visible with the pods in portrait auto-fit, too.
-    let x0 = plan.whiteboard.x, x1 = plan.whiteboard.x+plan.whiteboard.w;
+    // Keep both the meeting area and TV visible during portrait auto-fit.
+    let x0 = plan.meeting.x, x1 = plan.tv.x+plan.tv.w;
     for (const b of crew.layout.blocks.values()) { x0 = Math.min(x0, b.tx); x1 = Math.max(x1, b.tx + b.w); }
     return isFinite(x0) ? { x0: x0 - 26, x1: x1 + 26 } : undefined;
   }
@@ -357,9 +357,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, 0, 2, y1 + 6); wg.fillRect(room.x + room.w, 0, 2, y1 + 6);
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, -3, room.w + 4, 3);
     }
-    R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass);
-    drawMeetingRoom(wg,plan.whiteboard,activeMeeting(),asciiPass);
-    drawWhiteboard(wg,plan.whiteboard,boardSummary,asciiPass);
+    R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass,boardSummary);
+    drawMeetingRoom(wg,plan.meeting,activeMeeting(),asciiPass);
     const el = plan.elevator;
     if (!asciiPass) {
       if (crew.elevator.open > 0.01) P.elevatorInside(wg, el.x, el.y);
@@ -486,7 +485,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     clock += dtw;
     const t0 = performance.now();
     if (crew.layout.version !== layoutVersion) rebuild();
-    crew.setMeeting(activeMeeting(),meetingSeats(plan.whiteboard));
+    crew.setMeeting(activeMeeting(),meetingSeats(plan.meeting));
     crew.update(dtw);
     if (crew.layout.version !== layoutVersion) rebuild();
     crew.showFx(clock, (amt) => {
@@ -558,7 +557,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     asciiMs = asciiMs * 0.9 + (performance.now() - ta) * 0.1;
     if (tp < 1) glitch(tp);
     redPulse();
-    labelBoxes = drawLabels(g, crew, cam, { dpr, now: clock, ascii: asciiAmt > 0.5, tv: plan.tv });
+    labelBoxes = drawLabels(g, crew, cam, { dpr, now: clock, ascii: asciiAmt > 0.5, tv: plan.tv, plan:boardSummary });
     letterbox();
     if (crtOn) crt.apply(g, canvas, dpr, clock);
     drawMs = drawMs * 0.9 + (performance.now() - t0) * 0.1;

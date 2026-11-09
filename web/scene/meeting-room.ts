@@ -1,30 +1,32 @@
 import type {Rect} from './room.ts';
 import type {OfficeMeeting} from '../../src/shared/meetings.ts';
-import {drawText,fit,MICRO} from './font.ts';
+import {drawText,fit,MICRO,measure} from './font.ts';
 import {chair} from './props.ts';
 import {C} from './palette.ts';
 import {WALL_H} from './layout.ts';
-export function meetingRoom(board:Rect):Rect{return {x:board.x-8,y:board.y-6,w:156,h:188};}
-export function meetingSeats(board:Rect){return Array.from({length:8},(_,i)=>({x:board.x+25+(i%4)*29,y:i<4?111:180,dir:i<4?'down' as const:'up' as const}));}
-export function drawMeetingRoom(g:CanvasRenderingContext2D,board:Rect,m:OfficeMeeting|null,ascii=false){
- const r=meetingRoom(board),box=(x:number,y:number,w:number,h:number,c:string)=>{g.fillStyle=c;g.fillRect(x,y,w,h);};
- // Plaster and wood match the office. Keep every wall inside the minimum
- // 198px office floor; the previous 210px glass outline protruded below it.
- const bottom=r.y+r.h;
- box(r.x+5,WALL_H,r.w-10,bottom-WALL_H-5,ascii?'#171827':'#566257');
- box(r.x+9,WALL_H+4,r.w-18,bottom-WALL_H-13,ascii?'#111322':'#637162');
- const right=r.x+r.w-5;
- box(right,WALL_H-4,5,bottom-WALL_H+4,C.wall3);
- box(right,WALL_H-4,1,bottom-WALL_H+4,C.wall5);
- box(right+4,WALL_H-4,1,bottom-WALL_H+4,C.wood2);
- const doorLeft=r.x+r.w/2-18,doorRight=r.x+r.w/2+18;
- for(const [x,w]of [[r.x,doorLeft-r.x],[doorRight,r.x+r.w-doorRight]]){
-   box(x,bottom-5,w,5,C.wall3);box(x,bottom-5,w,1,C.wall5);box(x,bottom-1,w,1,C.wood2);
+export const MEETING_BAY=164;
+export function withMeetingBay(main:Rect):Rect{return {...main,x:main.x-MEETING_BAY,w:main.w+MEETING_BAY};}
+/** A separate floor area, without additional side/front partitions. */
+export function meetingRoom(main:Rect):Rect{return {x:main.x-MEETING_BAY+4,y:4,w:156,h:188};}
+export function meetingTable(room:Rect):Rect{return {x:room.x+58,y:WALL_H+10,w:40,h:100};}
+export function meetingSeats(room:Rect){return Array.from({length:8},(_,i)=>({x:room.x+(i<4?37:119),y:WALL_H+20+(i%4)*24,dir:i<4?'right' as const:'left' as const}));}
+export function drawMeetingRoom(g:CanvasRenderingContext2D,room:Rect,m:OfficeMeeting|null,ascii=false){
+ const box=(x:number,y:number,w:number,h:number,c:string)=>{g.fillStyle=c;g.fillRect(x,y,w,h);};
+ // The native cloud curtain windows are drawn by the room's static layer.
+ // A rug defines this area; no custom walls or glass-outline partitions.
+ box(room.x+5,WALL_H,room.w-10,room.y+room.h-WALL_H-4,ascii?'#171827':'#566257');
+ box(room.x+9,WALL_H+4,room.w-18,room.y+room.h-WALL_H-12,ascii?'#111322':'#637162');
+ for(const [i,p]of meetingSeats(room).entries()){
+   g.save();g.translate(p.x,p.y);g.rotate(p.dir==='right'?Math.PI/2:-Math.PI/2);
+   chair(g,0,0,'omp',!m||i>=m.participants.length);g.restore();
  }
- for(const [i,p]of meetingSeats(board).entries())chair(g,p.x,p.y,'omp',!m||i>=m.participants.length);
- const x=r.x+20,y=125;box(x+3,y+8,116,43,'#243b41');box(x,y,116,39,'#795540');box(x+2,y+2,112,34,'#b78b62');box(x+5,y+4,106,1,'#d6ad7b');
- drawText(g,MICRO(),fit(MICRO(),m?.title??'MEETING ROOM',126),r.x+10,63,ascii?'#ffffff':'#dce9df');
- drawText(g,MICRO(),m?m.participants.length+'/8 IN MEETING':'MAIN SESSIONS ONLY',r.x+10,74,'#dce9df');
- // Notebook and mugs are intentionally modest, leaving sprites readable.
- box(x+48,y+10,18,13,'#e6e6d7');box(x+56,y+10,1,13,'#879e9d');box(x+13,y+12,4,4,'#e6e6d7');box(x+95,y+20,4,4,'#e6e6d7');
+ const t=meetingTable(room),{x,y,w,h}=t;
+ box(x+3,y+4,w,h,C.wood1);box(x,y,w,h,C.wood3);box(x+2,y+2,w-4,h-4,C.wood5);
+ box(x+4,y+4,1,h-8,C.wood6);box(x+w-3,y+3,1,h-6,C.wood2);
+ const f=MICRO(),title=fit(f,m?.title??'MEETING ROOM',room.w-20),width=measure(f,title)+8;
+ box(room.x+8,2,width,10,C.sv0);drawText(g,f,title,room.x+12,4,ascii?C.white:C.cyan4);
+ const count=m?m.participants.length+'/8':'8 SEATS';
+ drawText(g,f,count,x+Math.floor((w-measure(f,count))/2),WALL_H+2,C.white);
+ box(x+12,y+42,15,19,C.white);box(x+12,y+51,15,1,C.slate3);
+ box(x+7,y+15,4,4,C.white);box(x+29,y+78,4,4,C.white);
 }

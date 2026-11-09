@@ -103,6 +103,7 @@ export interface LabelOpts {
   dpr: number;
   now: number;
   ascii: boolean;
+  plan?:import("./whiteboard.ts").WhiteboardSummary|null;
   /** the wall TV, written as real text in ASCII mode */
   tv?: { x: number; y: number; w: number; h: number };
 }
@@ -121,7 +122,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
   const placed: Box[] = [];
   const signs: Box[] = [];
   const hitboxes: Box[] = [];
-  if (o.ascii && o.tv) asciiTv(g, crew, cam, o.tv, now);
+  if (o.ascii && o.tv) asciiTv(g, crew, cam, o.tv, now,o.plan);
 
   /* ---- pod signs: the real vector mark over the pixel one (and in ASCII
    * mode, where the sign is not in the sampled picture, the whole sign) */
@@ -497,7 +498,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
 }
 
 /** The scoreboard as a terminal readout: header, three counters, and the shout ticker. */
-function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: number; y: number; w: number; h: number }, now: number) {
+function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: number; y: number; w: number; h: number }, now: number,plan?:import("./whiteboard.ts").WhiteboardSummary|null) {
   const [x0, y0] = cam.toScreen(tv.x, tv.y);
   const [x1, y1] = cam.toScreen(tv.x + tv.w, tv.y + tv.h);
   const W = x1 - x0, H = y1 - y0;
@@ -510,6 +511,11 @@ function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: 
   g.clip();
   g.fillStyle = "#09070c";
   g.fillRect(x0, y0, W, H);
+  if(plan){
+    text(g,'PLAN '+plan.completed+'/'+plan.total+(plan.blocked?' !'+plan.blocked:''),C.gold3,x0+3*s,y0+3*s,s);
+    text(g,asciiOnly(plan.title),C.white,x0+3*s,y0+12*s,s);
+    text(g,asciiOnly(plan.current??plan.state),C.blue5,x0+3*s,y0+21*s,s);
+  }else{
   text(g, "AGENT OFFICE", C.gold3, x0 + 3 * s, y0 + 3 * s, s);
   if (Math.floor(now / 600) % 2 === 0) { g.fillStyle = C.red3; g.fillRect(x1 - 6 * s, y0 + 4 * s, 3 * s, 3 * s); }
   const cols: [number, string, string][] = [[b.workers, "crew", C.white], [b.tools, "tools", C.blue5], [b.flips, "flips", C.terra4]];
@@ -521,6 +527,7 @@ function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: 
     text(g, v, c, cx - textW(v, ns) / 2, y0 + 13 * s, ns);
     text(g, label, C.slate3, cx - textW(label, s) / 2, y0 + 13 * s + 9 * ns, s);
   });
+  }
   const shout = b.shouts[b.shouts.length - 1];
   const ty = y1 - 10 * s;
   if (shout && now - shout.t0 < SHOUT_MS) {

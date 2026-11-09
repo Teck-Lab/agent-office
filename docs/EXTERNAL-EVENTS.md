@@ -96,10 +96,13 @@ old departure animation, keeping the same native parent and worker identity.
 
 ## Explicit meeting room
 
-The annex left of the elevator is a conference room with its existing native
-goal/task whiteboard inside. A table seats up to eight main sessions. Use the
-Meeting room button or click the room to read the agenda, decision, attendees and
-native whiteboard. A selector switches between simultaneous meetings.
+The meeting area is left of the elevator, with the same curtain windows used by
+the cloud area. It has no additional side/front partitions. The table runs
+vertically, with eight office chairs along its two long sides. The native OMP
+goal/task whiteboard is integrated into the existing TV: goal, current task,
+progress and counters fit the screen, while announcements retain their full-screen
+and ticker behavior. Click the TV, meeting area or Meeting room button to open the
+full native plan and agenda. A selector switches between simultaneous meetings.
 
 The identity-aware OMP MCP adapter exposes office_meeting with list, start, join,
 update, leave and end. Actions are delivered as a structured result to the owning
@@ -122,6 +125,6 @@ Meeting positions are presentation only: real execution host, desk allocation,
 subagent seats, task state, goals and Orca coordination remain unchanged. Native
 helpers keep the other Office tools. A meeting adds no dispatch or completion gate.
 
-Visual follow-up: the meeting table reuses the existing OMP office chair renderer.
-Warm plaster/wood partitions replace the glass outline, and the room bottom stays
-inside the smallest office floor (198 art pixels), preventing the protruding wall.
+The table reuses the existing OMP office chair renderer, rotated to face inward.
+The room fits the smallest office floor. Its windows share geometry and drawing
+code with the native cloud window wall, rather than maintaining a second style.

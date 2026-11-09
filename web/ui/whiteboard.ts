@@ -5,7 +5,7 @@ import { h } from './dom.ts';
 export function createWhiteboard(opts: {onMeeting?:(key:string)=>void;onChoose:(id:string)=>void}) {
   let views:BoardView[]=[], selected='', fingerprint='', pickerKey='', restoreFocus:HTMLElement|null=null;
   const picker=h('select',{attrs:{'aria-label':'Orchestrator whiteboard'},on:{change:()=>{selected=picker.value;opts.onChoose(selected);render();}}});
-  const heading=h('h2',{text:'Meeting room & whiteboard',attrs:{id:'whiteboard-title'}});
+  const heading=h('h2',{text:'Meeting room & TV plan',attrs:{id:'whiteboard-title'}});
   let meetings:OfficeMeeting[]=[],meetingSelected='';
   let known=new Map<string,WorkerState>();
   const meetingBody=h('section',{class:'wb-meeting',attrs:{'aria-label':'Meeting agenda'}});

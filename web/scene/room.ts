@@ -11,7 +11,8 @@
  * The `ascii` variants are the same plan stripped to outlines on a flat
  * ground, which is what the ASCII pass samples.
  */
-import {whiteboardRect,withWhiteboardBay} from "./whiteboard.ts";
+import {drawWhiteboard,type WhiteboardSummary} from './whiteboard.ts';
+import {meetingRoom,withMeetingBay} from './meeting-room.ts';
 import type { AgentKind } from "../../src/shared/events.ts";
 import { HOST_BRAND } from "../../src/shared/events.ts";
 import { BRAND_ART, C, art, mix, rgba, type ArtKey, type BrandArt } from "./palette.ts";
@@ -31,7 +32,7 @@ export interface RoomPlan {
   windows: Rect[];
   elevator: { x: number; y: number; doorX: number };
   tv: Rect;
-  whiteboard: Rect;
+  meeting: Rect;
   clock: { x: number; y: number };
   /** The neon "npx theagentoffice" sign on the back wall, when the wall has room for it. */
   sign: Rect | null;
@@ -51,6 +52,7 @@ export const ASCII_GROUND = "#0b0a13";
 
 export function plan(main: Rect, wing: Rect | null, room: Rect): RoomPlan {
   const x0 = main.x, x1 = main.x + main.w;
+  const meeting=meetingRoom(main);
   const elevator = { x: x0 + 12, y: WALL_H, doorX: x0 + 12 + P.ELEV_W / 2 };
   const rackX = x1 - 34;
   // A bigger screen when the wall is long enough: shouts on it have to read in a recording.
@@ -89,16 +91,14 @@ export function plan(main: Rect, wing: Rect | null, room: Rect): RoomPlan {
   let uplink: RoomPlan["uplink"] = null;
   if (wing && wing.y === 0) {
     // the wing's glass wall: tall panes between steel mullions, the uplink tower in front
-    const gx0 = wing.x + 6, gx1 = wing.x + wing.w - 6;
-    const n = Math.max(1, Math.round((gx1 - gx0) / 44));
-    const pw = Math.floor((gx1 - gx0 - (n - 1) * 3) / n);
-    for (let i = 0; i < n; i++) windows.push({ x: gx0 + i * (pw + 3), y: 8, w: pw, h: WALL_H - 14 });
+    windows.push(...cloudWindows(wing));
     uplink = { x: wing.x + 16, y: WALL_H + 6 };
   } else if (wing) {
     uplink = { x: wing.x + 14, y: wing.y + 22 };
   }
+  windows.push(...cloudWindows(meeting));
   return {
-    room:withWhiteboardBay(room), main:withWhiteboardBay(main), whiteboard:whiteboardRect(main), wing, windows, elevator, tv, clock, sign,
+    room:withMeetingBay(room), main:withMeetingBay(main), meeting, wing, windows, elevator, tv, clock, sign,
     rack: { x: rackX, y: WALL_H + 10 },
     coffee: { x: rackX - 32, y: WALL_H + 9 },
     cooler: { x: elevator.x + P.ELEV_W + 4, y: WALL_H + 8 },
@@ -225,7 +225,7 @@ function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan) {
 
   // ---- windows: punch holes, then frames
   for (const w of p.windows) {
-    if (w.x > X1) continue;
+    if (w.x < p.meeting.x+p.meeting.w || w.x > X1) continue;
     g.clearRect(w.x, w.y, w.w, w.h);
     glassSheen(g, w);
     const f = C.slate5, fd = C.slate3;
@@ -241,6 +241,8 @@ function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan) {
     g.fillStyle = rgba(C.ink, 0.12);
     g.fillRect(w.x - 3, w.y + w.h + 3, w.w + 6, 2);
   }
+
+  drawCloudWindowWall(g,p.meeting,p.windows);
 
   // ---- TV frame (screen drawn live)
   const tv = p.tv;
@@ -292,6 +294,34 @@ function glassSheen(g: CanvasRenderingContext2D, w: Rect) {
   }
 }
 
+/** Shared cloud-window geometry, including the meeting-room back wall. */
+export function cloudWindows(wall:Rect):Rect[]{
+ const x0=wall.x+6,x1=wall.x+wall.w-6,n=Math.max(1,Math.round((x1-x0)/44)),w=Math.floor((x1-x0-(n-1)*3)/n);
+ return Array.from({length:n},(_,i)=>({x:x0+i*(w+3),y:8,w,h:WALL_H-14}));
+}
+export function drawCloudWindowWall(g:CanvasRenderingContext2D,wall:Rect,windows:Rect[]){
+ const X0=wall.x;
+    // steel curtain wall, glass panes punched through
+    r(g, X0, 0, wall.w, WALL_H, C.steel1);
+    r(g, X0, 0, wall.w, 3, C.sv0);
+    r(g, X0, 3, wall.w, 1, C.steel3);
+    for (const w of windows) {
+      if (w.x < X0 || w.x+w.w > X0+wall.w) continue;
+      g.clearRect(w.x, w.y, w.w, w.h);
+      g.fillStyle = rgba(C.cyan4, 0.06);
+      g.fillRect(w.x, w.y, w.w, w.h);
+      glassSheen(g, w);
+      r(g, w.x - 1, w.y - 1, w.w + 2, 1, C.steel3);
+      r(g, w.x + w.w, w.y, 1, w.h, C.steel2);
+    }
+    // base: a lit kick plate where glass meets floor
+    r(g, X0, WALL_H - 6, wall.w, 6, C.sv1);
+    r(g, X0, WALL_H - 6, wall.w, 1, C.steel3);
+    r(g, X0, WALL_H - 2, wall.w, 2, C.sv0);
+    g.fillStyle = rgba(C.cyan3, 0.5);
+    g.fillRect(X0 + 4, WALL_H - 4, wall.w - 8, 1);
+}
+
 function buildWing(g: CanvasRenderingContext2D, p: RoomPlan) {
   const wg = p.wing!;
   const below = wg.y > 0;
@@ -310,25 +340,7 @@ function buildWing(g: CanvasRenderingContext2D, p: RoomPlan) {
   g.restore();
 
   if (!below) {
-    // steel curtain wall, glass panes punched through
-    r(g, X0, 0, wg.w, WALL_H, C.steel1);
-    r(g, X0, 0, wg.w, 3, C.sv0);
-    r(g, X0, 3, wg.w, 1, C.steel3);
-    for (const w of p.windows) {
-      if (w.x < X0) continue;
-      g.clearRect(w.x, w.y, w.w, w.h);
-      g.fillStyle = rgba(C.cyan4, 0.06);
-      g.fillRect(w.x, w.y, w.w, w.h);
-      glassSheen(g, w);
-      r(g, w.x - 1, w.y - 1, w.w + 2, 1, C.steel3);
-      r(g, w.x + w.w, w.y, 1, w.h, C.steel2);
-    }
-    // base: a lit kick plate where glass meets floor
-    r(g, X0, WALL_H - 6, wg.w, 6, C.sv1);
-    r(g, X0, WALL_H - 6, wg.w, 1, C.steel3);
-    r(g, X0, WALL_H - 2, wg.w, 2, C.sv0);
-    g.fillStyle = rgba(C.cyan3, 0.5);
-    g.fillRect(X0 + 4, WALL_H - 4, wg.w - 8, 1);
+    drawCloudWindowWall(g,wg,p.windows);
     // the glass partition between the office and the wing
     const px = X0 - 12;
     r(g, px, 0, 12, Y1, C.steel2);
@@ -675,7 +687,7 @@ function logoMark(agent: AgentKind, px: number): Bitmap {
   return pixelLogo(agent as LogoKind, px, (BRAND_ART[agent] ?? BRAND_ART.claude).ink);
 }
 
-export function drawLive(g: CanvasRenderingContext2D, p: RoomPlan, t: number, now: Date, board: Board, activity: number, ascii = false) {
+export function drawLive(g: CanvasRenderingContext2D, p: RoomPlan, t: number, now: Date, board: Board, activity: number, ascii = false, planSummary:WhiteboardSummary|null=null) {
   P.clockHands(g, p.clock.x, p.clock.y, now);
   if (p.sign) neonSign(g, p.sign, t, ascii);
   else {
@@ -687,7 +699,7 @@ export function drawLive(g: CanvasRenderingContext2D, p: RoomPlan, t: number, no
   }
   if (ascii) return; // the label pass writes the TV as real text
   P.rackLeds(g, p.rack.x, p.rack.y, t, activity);
-  tvScreen(g, p.tv, t, board);
+  tvScreen(g, p.tv, t, board, planSummary);
 }
 
 /** Neon tubes: "AGENT OFFICE" over "npx theagentoffice", with the odd flicker of a real sign. */
@@ -711,12 +723,14 @@ function neonSign(g: CanvasRenderingContext2D, s: Rect, t: number, ascii: boolea
   drawText(g, f, cmd, cx, s.y + 13, cyan);
 }
 
-function tvScreen(g: CanvasRenderingContext2D, tv: Rect, t: number, b: Board) {
+export function tvScreen(g: CanvasRenderingContext2D, tv: Rect, t: number, b: Board, planSummary:WhiteboardSummary|null=null) {
   const m = MICRO(), f = FONT();
   const shout = b.shouts.length ? b.shouts[b.shouts.length - 1] : null;
   const live = shout && t - shout.t0 < SHOUT_MS ? shout : null;
   r(g, tv.x, tv.y, tv.w, tv.h, C.ink2);
   for (let y = 0; y < tv.h; y += 2) r(g, tv.x, tv.y + y, tv.w, 1, mix(C.ink2, C.blue1, 0.5));
+  if(planSummary)drawWhiteboard(g,tv,planSummary,b);
+  else {
   drawText(g, m, "AGENT OFFICE", tv.x + 3, tv.y + 2, C.gold3);
   if (Math.floor(t / 600) % 2 === 0) r(g, tv.x + tv.w - 6, tv.y + 3, 3, 3, C.red3);
   const cols: [number, string, string][] = [[b.workers, "CREW", C.white], [b.tools, "TOOLS", C.blue5], [b.flips, "FLIPS", C.terra4]];
@@ -729,6 +743,7 @@ function tvScreen(g: CanvasRenderingContext2D, tv: Rect, t: number, b: Board) {
     else drawText(g, m, s, x + Math.floor((cw - measure(m, s)) / 2), tv.y + 11, c);
     drawText(g, m, label, x + Math.floor((cw - measure(m, label)) / 2), tv.y + 18, C.slate3);
   });
+  }
   const by = tv.y + tv.h - 13;
   const ink = live ? (BRAND_ART[live.agent] ?? BRAND_ART.claude).ink : C.ink;
   const text = live ? asciiOnly(live.text) || "!" : "";
@@ -765,6 +780,7 @@ function tvScreen(g: CanvasRenderingContext2D, tv: Rect, t: number, b: Board) {
     drawText(g, f, text, x, by, C.white);
     g.restore();
   } else {
+    if(planSummary)return;
     // per-brand mini counts for whoever is in, then the activity sparkline
     const ks = (Object.keys(b.byAgent) as AgentKind[]).filter((k) => b.byAgent[k] > 0).sort((a, c) => b.byAgent[c] - b.byAgent[a]).slice(0, 3);
     let x = tv.x + 3;
