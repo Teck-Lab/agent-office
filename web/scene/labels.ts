@@ -231,6 +231,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
   };
   /* Labels stay inside the worker's own zone (the office, or the cloud wing behind its glass). */
   const zoneOf = (w: Worker) => {
+    if(crew.meetingMember(w.id))return {x0:edge,x1:cam.vw-edge};
     const r = w.seat.block.zone === "cloud" && crew.layout.wing ? crew.layout.wing : crew.layout.main;
     const [x0] = cam.toScreen(r.x + 4, 0);
     const [x1] = cam.toScreen(r.x + r.w - 4, 0);
@@ -380,15 +381,17 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
     }
 
     // --- status chip under the chair
-    const fresh = now - w.summaryAt < 9000;
+    const visual=crew.activityState(w),task=crew.taskText(w);
+    const persistent=crew.preferences.labels!=='quiet';
+    const fresh = persistent;
     // A waiting worker always gets its chip: it is the one thing on screen the viewer has to act on.
-    const wantChip = !w.leaving && !flipping && (w.needsHuman || (w.summary && (vip || (!folded(w) && ((fresh && (!crowded || spent < budget * 0.7)) || zoomedIn)))));
+    const wantChip = !w.leaving && !flipping && (persistent||vip||w.needsHuman) && (w.needsHuman || ((w.summary||persistent) && (vip || (!folded(w) && ((fresh && (!crowded || spent < budget * 0.7)) || zoomedIn)))));
     if (wantChip && (vip || w.needsHuman || spent < budget)) {
-      const raw = w.needsHuman ? waitText(w) : w.summary;
+      const raw = w.needsHuman ? waitText(w) : visual.label+(crew.preferences.labels==='tasks'&&task?' / '+task:'');
       const s = fit(FONT(), raw, (sel ? 44 : 26) * 6);
       const cw = textW(s, fs) + pad * 2 + 4 * fs;
       const cy = Math.round(fy + 6 * z);
-      const cands: Box[] = [0, 1, -1].map((k) => onRug(w.seat.block, inZone(w, { x: inX(hx - cw / 2 + k * cw * 0.6, cw), y: cy + (k ? Math.round(lineH * 0.6) : 0), w: cw, h: lineH + pad })));
+      const cands: Box[] = [0, 1, -1].map((k) => (crew.meetingMember(w.id)?(b:Box)=>b:(b:Box)=>onRug(w.seat.block,b))(inZone(w, { x: inX(hx - cw / 2 + k * cw * 0.6, cw), y: cy + (k ? Math.round(lineH * 0.6) : 0), w: cw, h: lineH + pad })));
       // A waiting worker's chip may cover a pod sign, never another label: with no such spot, or in a pod
       // too narrow for them all, it joins the pod's "N need you" chip below instead.
       const pooled = w.needsHuman && !sel && !hov && foldAll.has(w.seat.block);
@@ -406,7 +409,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
         const age = clamp((now - w.summaryAt) / 9000, 0, 1);
         g.globalAlpha = vip || w.needsHuman ? 0.95 : 0.88 - age * 0.3;
         pill(g, chip.x, chip.y, chip.w, chip.h, fs, bg, w.needsHuman ? rgba(C.white, 0.5 + pulse * 0.5) : undefined);
-        g.fillStyle = w.needsHuman ? C.white : ACT_COL[w.act];
+        g.fillStyle = w.needsHuman ? C.white : visual.color;
         g.fillRect(chip.x + pad, chip.y + pad, 2 * fs, lineH - pad);
         text(g, s, w.needsHuman ? C.white : C.slate5, chip.x + pad + 4 * fs, chip.y + fs, fs);
         g.globalAlpha = 1;

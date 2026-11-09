@@ -168,21 +168,21 @@ function serverFloor(g: CanvasRenderingContext2D, X0: number, Y0: number, W: num
 /* ---------------------------------------------------------- static layer */
 
 /** Static layer in buffer coordinates (world - origin). */
-export function build(p: RoomPlan, origin: { x: number; y: number }, size: { w: number; h: number }, ascii = false): Bitmap {
+export function build(p: RoomPlan, origin: { x: number; y: number }, size: { w: number; h: number }, ascii = false, theme='original',decor='standard'): Bitmap {
   const b = bitmap(size.w, size.h);
   const g = b.g;
   g.save();
   g.translate(-origin.x, -origin.y);
   if (ascii) buildAscii(g, p);
   else {
-    buildOffice(g, p);
+    buildOffice(g, p,theme,decor);
     if (p.wing) buildWing(g, p);
   }
   g.restore();
   return b;
 }
 
-function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan) {
+function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan,theme='original',decor='standard') {
   const m = p.main;
   const X0 = m.x, X1 = m.x + m.w, Y1 = m.y + m.h;
   const rr = rng(4321);
@@ -206,7 +206,7 @@ function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan) {
   g.restore();
 
   // ---- back wall
-  r(g, X0, 0, m.w, WALL_H, C.wall4);
+  r(g, X0, 0, m.w, WALL_H, theme==='forest'?'#a8b8a2':theme==='sunset'?'#c7a3a6':C.wall4);
   for (let i = 0; i < m.w / 3; i++) r(g, X0 + Math.floor(rr() * m.w), 6 + Math.floor(rr() * (WALL_H - 26)), 1, 1, mix(C.wall4, C.wall3, 0.35));
   r(g, X0, 0, m.w, 4, C.wall1);
   r(g, X0, 4, m.w, 1, C.wall5);
@@ -275,7 +275,7 @@ function buildOffice(g: CanvasRenderingContext2D, p: RoomPlan) {
   P.waterCooler(g, p.cooler.x, p.cooler.y);
   P.coffeeMachine(g, p.coffee.x, p.coffee.y);
   P.rack(g, p.rack.x, p.rack.y);
-  for (const pl of p.plants) P.plantTall(g, pl.x, pl.y, pl.seed);
+  for (const pl of decor==='minimal'?[]:p.plants) P.plantTall(g, pl.x, pl.y, pl.seed);
   g.fillStyle = rgba(C.ink, 0.22);
   g.fillRect(p.cooler.x - 1, p.cooler.y, 12, 2);
   g.fillRect(p.coffee.x - 1, p.coffee.y, 28, 2);

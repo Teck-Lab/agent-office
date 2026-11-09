@@ -428,6 +428,15 @@ export function chairFront(g: G, cx: number, cy: number, key: ArtKey, empty: boo
   r(g, cx - 7, cy - 6, 3, 1, C.slate3); r(g, cx + 4, cy - 6, 3, 1, C.slate3);
 }
 
+/** Side-facing seat with upright legs and back, rather than rotated furniture. */
+export function chairSide(g:G,cx:number,cy:number,key:ArtKey,empty:boolean,dir:'left'|'right'){
+ const [main,acc]=art(key).chair,back=cx+(dir==='right'?-6:3);
+ r(g,cx-1,cy-2,2,5,C.slate2);r(g,cx-5,cy+2,10,1,C.slate2);
+ r(g,cx-5,cy+3,1,1,C.ink2);r(g,cx+4,cy+3,1,1,C.ink2);
+ r(g,back,cy-13,3,12,dk(main,.4));r(g,back,cy-13,3,1,acc);
+ r(g,cx-5,cy-4,10,3,main);if(empty)r(g,cx-4,cy-4,8,1,lt(main,.2));
+ r(g,cx-3,cy-7,6,1,C.slate3);
+}
 export function stool(g: G, cx: number, cy: number, key: ArtKey) {
   const seat = art(key).stool;
   r(g, cx - 1, cy - 2, 2, 4, C.slate2);
@@ -1174,4 +1183,8 @@ export function rackRow(g: G, x: number, y: number, w: number, t: number, seed: 
     }
     r(g, cx + CW - 5, top + h - 3, 2, 1, C.cyan3);
   }
+}
+
+export function coffeeSteam(g:G,x:number,y:number,t:number){
+ for(let i=0;i<3;i++){const age=(t/180+i*4)%14;g.fillStyle=rgba(C.white,(1-age/14)*.35);g.fillRect(Math.round(x+14+Math.sin(age/3+i)*2),Math.round(y-12-age),1,2);}
 }

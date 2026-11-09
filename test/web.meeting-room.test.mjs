@@ -42,9 +42,13 @@ test('main characters attend without moving their helpers or changing execution 
  crew.load({version:1,startedAt:ts,demo:false,workers:[w('main'),w('helper','main')],recent:[]});crew.update(16);
  const main=crew.workers.get('main'),helper=crew.workers.get('helper'),seat=main.seat,helperSeat=helper.seat,block=main.seat.block,room=meetingRoom(crew.layout.main);
  crew.setMeeting({id:'m',sourceId:'sandbox',ownerId:'main',title:'Handoff',participants:['main','helper'],updatedAt:ts},meetingSeats(room));crew.update(16);
+ assert.equal(main.walking,true,'walks instead of teleporting');
+ for(let i=0;i<1500&&main.walking;i++){now+=16;crew.update(16);}
  assert.equal(main.x,meetingSeats(room)[0].x);assert.equal(main.y,meetingSeats(room)[0].y);assert.equal(main.host.id,'sandbox');assert.equal(main.seat,seat);assert.equal(main.seat.block,block);
  assert.equal(helper.seat,helperSeat);assert.notEqual(helper.x,meetingSeats(room)[1].x);assert.equal(crew.pose(main,now).pose,'sit');
- crew.setMeeting(null,meetingSeats(room));crew.update(16);assert.equal(main.seat,seat);assert.equal(main.x,seat.x);assert.equal(main.y,seat.y);
+ crew.setMeeting(null,meetingSeats(room));crew.update(16);assert.equal(main.walking,true);
+ for(let i=0;i<1500&&main.walking;i++){now+=16;crew.update(16);}
+ assert.equal(main.seat,seat);assert.equal(main.x,seat.x);assert.equal(main.y,seat.y);
 });
 
 // Exercise the actual bitmap renderer with an instrumented canvas: all plan

@@ -128,3 +128,35 @@ helpers keep the other Office tools. A meeting adds no dispatch or completion ga
 The table reuses the existing OMP office chair renderer, rotated to face inward.
 The room fits the smallest office floor. Its windows share geometry and drawing
 code with the native cloud window wall, rather than maintaining a second style.
+
+
+## Read-only office presentation
+
+The Appearance button changes browser-local visual preferences only. It does not
+invoke control APIs or instruct Orca/OMP. The default sky follows the viewer’s local
+clock; daylight, dusk and night can be previewed. Weather is decorative, with clear,
+rain and date-based options, not a live weather feed.
+
+Room colours, oak/walnut meeting furniture, horizontal/vertical seating, character
+accessories, decoration density, task labels, ambient life, movement, team lines
+and celebrations are configurable and resettable. Reduced-motion preference is
+respected on first use. Layout changes preserve execution hosts, session IDs and
+actual worktrees. The existing office remains a view of external activity.
+
+Native helpers stay with their parents. Orca Runs get separate pods per host and
+project; colours and hover lines show their ownership. Activity labels distinguish
+reported implementation/research/review, human attention, blocked/paused native plans,
+completed goals and idle coordinators whose team remains present (Team present).
+Idle is never treated as completed. Task labels and hover details use the existing
+bounded, redacted plan/assignment feed, not new transcript access.
+
+Main sessions walk through the meeting doorway and around the table, then return
+to their original desks; helpers remain at work. Meeting speech/gestures follow
+recent reply/shout events, not simulated conversation or audio. Goal completion
+celebrates once per observed transition, without replaying on reconnect. Explicit
+celebration and test-pass events remain supported; a review approval is not inferred
+from silence or a finished turn. Idle coffee poses and the wandering cat are ambient
+visuals, not changes to agent state.
+
+Team present means linked sessions remain visible; it is not proof that they are
+currently executing a turn. Execution is shown from their individual activity.

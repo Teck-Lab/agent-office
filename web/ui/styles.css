@@ -3688,3 +3688,15 @@ body.stream .sl { opacity: 0 !important; pointer-events: none !important; }
 body.stream .whiteboard-tab{display:none}@media(max-width:640px){.whiteboard-tab{left:12px;bottom:80px;padding:9px 12px}.wb-header{padding:16px}.wb-body{padding:16px}.whiteboard-dialog{max-height:calc(100dvh - 28px)}}
 
 .wb-meeting{padding:14px;border:1px solid #557879;border-radius:8px;background:#173037;margin-bottom:16px}.wb-meeting h3{margin:0 0 10px}.wb-attendee{display:block;font-size:11px;overflow-wrap:anywhere;padding:4px 0}.wb-decision{border-left:3px solid #91bc8b;padding-left:10px}
+
+.appearance-tab{position:fixed;left:14px;bottom:74px;z-index:25;padding:8px 12px;border:1px solid #596174;border-radius:7px;background:#171c2a;color:#dbeafe;font:inherit;cursor:pointer}
+.appearance-dialog{width:min(440px,calc(100vw - 24px));max-height:85vh;overflow:auto;border:1px solid #596174;border-radius:12px;background:#171c2a;color:#e2e8f0;padding:22px;box-shadow:0 20px 80px #0009}
+.appearance-dialog::backdrop{background:#05081599}.appearance-dialog h2{font-size:20px;margin:0 0 10px}.appearance-dialog p{font-size:13px;line-height:1.5;color:#afbed0}.appearance-options{display:grid;gap:12px;margin:20px 0}
+.appearance-options label{display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:13px}.appearance-options select{max-width:55%;padding:6px;border:1px solid #596174;border-radius:5px;background:#222b3b;color:#e2e8f0;font:inherit}.appearance-options input{accent-color:#38bdf8}
+.appearance-actions{display:flex;justify-content:space-between;gap:12px}.appearance-actions button{border:1px solid #596174;background:#24354d;color:#e2e8f0;border-radius:6px;padding:8px 12px;cursor:pointer}.appearance-tab:focus-visible,.appearance-dialog :focus-visible{outline:2px solid #7dd3fc;outline-offset:3px}
+body.stream .appearance-tab{display:none}.office-hover{position:fixed;left:14px;top:84px;z-index:24;max-width:min(340px,calc(100vw - 28px));background:#111827f5;color:#e2e8f0;border:1px solid #465871;border-radius:8px;padding:12px;pointer-events:none;font-size:12px;line-height:1.5;white-space:pre-wrap}.office-hover[hidden]{display:none}
+
+@media(max-width:640px){.appearance-tab{left:12px;bottom:132px}.office-hover{top:112px;max-width:calc(100vw - 28px)}}
+body.stream .office-hover{display:none}
+
+.appearance-tab,.appearance-dialog{pointer-events:auto}

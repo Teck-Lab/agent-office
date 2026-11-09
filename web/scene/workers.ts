@@ -9,6 +9,8 @@
  */
 import type { AgentKind, Host, OfficeEvent, Snapshot, ToolCategory, WorkerState, OrcaCoordination, Placement } from "../../src/shared/events.ts";
 import { BRAND, HOST_BRAND, IDLE_MS, nativeFamilyIds } from "../../src/shared/events.ts";
+import {DEFAULT_VIEW,visualState,taskLabel,teamKey,completesGoal,type ViewPreferences} from './presentation.ts';
+import type {OfficePlan} from '../../src/shared/plan.ts';
 import { BRAND_ART, C, rgba, type ArtKey } from "./palette.ts";
 import {
   Layout, WALL_H, CORRIDOR_Y, DESK_W, SEAT_W, LAPTOP_DX, RUG_TOP,
@@ -35,6 +37,7 @@ export interface Worker {
   host?: Host;
   placement?: Placement;
   orchestration?: OrcaCoordination | null;
+  plan?:OfficePlan|null;
   remote: boolean;
   cwd?: string;
   model?: string;
@@ -142,14 +145,45 @@ const OFFLINE = /^remote offline/i;
 export interface DrawCall { y: number; fn: (g: CanvasRenderingContext2D) => void }
 
 export class Crew {
+  preferences:ViewPreferences={...DEFAULT_VIEW};
+  private completed=new Set<string>();
+  private pendingCheers=new Set<string>();
+  private visits=new Map<string,{kind:'meeting'|'return';target:{x:number;y:number;dir:Dir}}>();
+  private meetingDoor={x:8,y:144};
+  activityState(w:Worker){return visualState(w,this.workers.values());}
+  taskText(w:Worker){return taskLabel(w);}
+  meetingMember(id:string){return this.meetingPositions.has(id);}
+  isCoffee(w:Worker,now:number){return this.preferences.ambience&&this.preferences.motion&&w.act==='idle'&&!w.needsHuman&&!this.meetingPositions.has(w.id)&&!this.visits.has(w.id)&&now-w.actSince>15000&&(Math.floor(now/1000)+w.seed%73)%73<5;}
+  setAppearance(p:ViewPreferences){
+    this.preferences=p;
+    for(const w of this.workers.values())this.styleWorker(w);
+  }
+  private styleWorker(w:Worker){const look=lookFor(w.id,w.agent,w.intern);if(this.preferences.characters!=='original'){look.acc=this.preferences.characters==='caps'?'cap':'headphones';look.key+=':'+look.acc;}w.look=look;}
+
   private meetingPositions=new Map<string,{x:number;y:number;dir:Dir}>();
-  setMeeting(meeting:import('../../src/shared/meetings.ts').OfficeMeeting|null,seats:{x:number;y:number;dir:Dir}[]){
+  setMeeting(meeting:import('../../src/shared/meetings.ts').OfficeMeeting|null,seats:{x:number;y:number;dir:Dir}[],door={x:8,y:144}){
+    this.meetingDoor=door;
     const next=new Map<string,{x:number;y:number;dir:Dir}>();
-    for(const [i,id] of (meeting?.participants??[]).entries()){
-      const w=this.workers.get(id);if(w&&!w.intern&&!w.parentId&&!w.leaving&&seats[i])next.set(id,seats[i]);
+    for(const [i,id]of(meeting?.participants??[]).entries()){const w=this.workers.get(id);if(w&&!w.intern&&!w.parentId&&!w.leaving&&seats[i])next.set(id,seats[i]);}
+    for(const [id]of this.meetingPositions)if(!next.has(id)){
+      const w=this.workers.get(id);if(w&&!w.leaving)this.visit(w,null);
     }
-    for(const [id] of this.meetingPositions)if(!next.has(id)){const w=this.workers.get(id);if(w&&!w.leaving){w.x=w.seat.x;w.y=w.seat.y;w.seated=true;w.path=[];w.walking=false;w.stand=0;}}
+    for(const [id,target]of next){const old=this.meetingPositions.get(id);if(!old||old.x!==target.x||old.y!==target.y){const w=this.workers.get(id)!;this.visit(w,target);}}
     this.meetingPositions=next;
+  }
+  private visit(w:Worker,target:{x:number;y:number;dir:Dir}|null){
+    const d=this.meetingDoor,inside=d.x-30;
+    w.tp=null;w.alpha=1;w.toSeat=false;w.stand=0;
+    if(!this.preferences.motion){w.path=[];w.walking=false;w.seated=!target;w.x=target?.x??w.seat.x;w.y=target?.y??w.seat.y;w.dir=target?.dir??'up';this.visits.delete(w.id);return;}
+    const wasMeeting=this.meetingPositions.has(w.id)||this.visits.has(w.id);
+    const inRoom=w.x<d.x-20;
+    const fromLeft=this.meetingPositions.get(w.id)?.dir==='right';
+    const exit=inRoom?[...(fromLeft?[{x:w.x,y:82}]:[]),{x:inside,y:fromLeft?82:w.y},{x:inside,y:d.y},d]:[{x:w.x,y:CORRIDOR_Y},{x:d.x,y:CORRIDOR_Y},d];
+    const entry=target?[{x:inside,y:d.y},...(target.dir==='right'?[{x:inside,y:82},{x:target.x,y:82}]:[{x:inside,y:target.y}]),{x:target.x,y:target.y}]:[];
+    const route=target?[...(wasMeeting?exit:routeFromSeat(this.layout,w.seat,d)),...entry]:inRoom?[...exit,...routeToSeat(this.layout,d,w.seat)]:routeToSeat(this.layout,{x:w.x,y:w.y},w.seat);
+    const destination=target??{x:w.seat.x,y:w.seat.y,dir:'up' as const};
+    this.visits.set(w.id,{kind:target?'meeting':'return',target:destination});
+    this.walkTo(w,route,()=>{this.visits.delete(w.id);w.dir=destination.dir;w.seated=!target;w.stand=0;});
   }
 
   workers = new Map<string, Worker>();
@@ -180,6 +214,7 @@ export class Crew {
 
   clear() {
     this.workers.clear();
+    this.meetingPositions.clear();this.visits.clear();this.completed.clear();this.pendingCheers.clear();
     this.layout.clear();
     this.offline.clear();
     this.fx.ps = [];
@@ -202,7 +237,8 @@ export class Crew {
     let tools = 0;
     for (const ws of sorted) {
       const w = this.spawn(ws, now, false);
-      w.act = statusAct(ws);
+      w.act = statusAct(ws);w.plan=ws.plan;
+      if(ws.plan?.goal?.status==='complete')this.completed.add(w.id+':'+ws.plan.goal.id);
       w.summary = ws.summary ?? "";
       w.summaryAt = now - 10_000;
       w.needsHuman = ws.status === "waiting";
@@ -255,7 +291,7 @@ export class Crew {
     const orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;
     const seat = parent
       ? this.layout.allocIntern(e.workerId, parent.id, e.agent, e.project, host, now, placement)
-      : this.layout.allocMain(e.workerId, e.agent, e.project, host, now, placement);
+      : this.layout.allocMain(e.workerId, e.agent, e.project, host, now, placement, orchestration?.runId?JSON.stringify([e.project,orchestration.runId]):undefined);
     const remote = seat.remote;
     const seed = hash(e.workerId);
     const w: Worker = {
@@ -283,6 +319,7 @@ export class Crew {
       w.toSeat = true;
       w.walking = false; // waits for the doors
     }
+    this.styleWorker(w);
     this.workers.set(w.id, w);
     // Child checkpoints can arrive before a parent after a server reconnect.
     if ([...this.workers.values()].some(child => child.parentId === w.id)) {
@@ -300,7 +337,7 @@ export class Crew {
       const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
       w.placement = placement; if (w !== root) w.orchestration = root.orchestration;
       w.seat = parent ? this.layout.allocIntern(w.id, parent.id, w.agent, w.project, w.host, now, placement)
-        : this.layout.allocMain(w.id, w.agent, w.project, w.host, now, placement);
+        : this.layout.allocMain(w.id, w.agent, w.project, w.host, now, placement, w.orchestration?.runId?JSON.stringify([w.project,w.orchestration.runId]):undefined);
       w.remote = w.seat.remote; w.path = []; w.walking = false; w.toSeat = false; w.seated = true; w.tp = null;
     }
   }
@@ -309,7 +346,7 @@ export class Crew {
   sameTeam(first: string, second: string): boolean {
     const a = this.workers.get(first), b = this.workers.get(second);
     if (!a || !b) return false;
-    if (a.orchestration?.runId && a.orchestration.runId === b.orchestration?.runId) return true;
+    if (teamKey(a) && teamKey(a)===teamKey(b)) return true;
     const root = (w: Worker) => {
       const seen = new Set<string>();
       while (w.parentId && !seen.has(w.id)) {
@@ -373,6 +410,7 @@ export class Crew {
       w.path=[];w.onArrive=undefined;w.walking=false;w.toSeat=false;w.tp=null;
       w.x=w.seat.x;w.y=w.seat.y;w.seated=true;w.stand=0;w.alpha=1;
     }
+    const previousRun=w.orchestration?.runId;
     if (e.orchestration !== undefined) {
       const parent = w.parentId ? this.workers.get(w.parentId) : undefined;
       w.orchestration = parent?.orchestration !== undefined ? parent.orchestration : e.orchestration;
@@ -383,7 +421,14 @@ export class Crew {
     const ownerPlacement = w.parentId ? this.workers.get(w.parentId)?.placement : undefined;
     const placement = ownerPlacement ?? e.placement;
     if (placement && placement !== w.placement) this.rehome(w, placement, now);
-    if(e.kind==="plan")return;
+    if(previousRun!==w.orchestration?.runId&&!w.parentId)this.rehome(w,w.placement??(w.remote?'cloud':'office'),now);
+    if(e.kind==='plan'){
+      const key=w.id+':'+e.plan?.goal?.id;
+      if(completesGoal(w.plan,e.plan)&&!this.completed.has(key)){
+        this.completed.add(key);if(this.completed.size>512)this.completed.delete(this.completed.values().next().value!);if(this.preferences.celebrations){if(w.walking)this.pendingCheers.add(w.id);else this.startShow(w,'cheer',now);}
+      }
+      w.plan=e.plan;return;
+    }
     w.lastEventAt = now;
     if (e.cwd) w.cwd = e.cwd;
     if (e.model) w.model = e.model;
@@ -453,11 +498,12 @@ export class Crew {
         if (e.summary) { w.summary = e.summary; w.summaryAt = now; }
         break;
       case "test_pass":
-        this.startShow(w, "cheer", now);
+        if(this.preferences.celebrations)this.startShow(w, "cheer", now);
         w.summary = e.summary || "tests passed";
         w.summaryAt = now;
         break;
       case "celebrate":
+        if(!this.preferences.celebrations)break;
         this.startShow(w, "cheer", now);
         this.fx.confetti(w.x, w.y - 34, [C.gold3, C.pink, C.blue5, C.green4, C.white, brandInk(w.agent)]);
         if (e.summary) { w.summary = e.summary; w.summaryAt = now; }
@@ -501,6 +547,8 @@ export class Crew {
     w.id = to;
     this.workers.set(to, w);
     this.layout.rename(from, to);
+    const meeting=this.meetingPositions.get(from);if(meeting){this.meetingPositions.delete(from);this.meetingPositions.set(to,meeting);}
+    const visit=this.visits.get(from);if(visit){this.visits.delete(from);this.visits.set(to,visit);}
     for (const k of this.workers.values()) if (k.parentId === from) k.parentId = to;
     if (this.selected === from) this.selected = to;
     if (this.hovered === from) this.hovered = to;
@@ -620,6 +668,7 @@ export class Crew {
     // pods reflowed: walkers heading to a seat follow it
     if (this.layout.packs !== this.lastPack) {
       this.lastPack = this.layout.packs;
+      for(const [id,v]of this.visits){const w=this.workers.get(id);if(w&&!w.leaving&&(v.kind==='return'||w.path.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))){if(!Number.isFinite(w.x)||!Number.isFinite(w.y)){w.x=w.seat.x;w.y=w.seat.y;}this.visit(w,v.kind==='return'?null:v.target);}}
       for (const w of this.workers.values()) {
         if (!w.toSeat || w.leaving || !w.path.length) continue;
         const full = routeToSeat(this.layout, { x: this.elevator.x, y: WALL_H + 1 }, w.seat);
@@ -662,9 +711,25 @@ export class Crew {
           w.gone = true;
         });
       }
+      if(this.pendingCheers.has(w.id)&&!w.walking){this.pendingCheers.delete(w.id);if(this.preferences.celebrations&&!w.leaving)this.startShow(w,'cheer',now);}
       const meeting=this.meetingPositions.get(w.id);
-      if(meeting&&!w.leaving){w.x=meeting.x;w.y=meeting.y;w.dir=meeting.dir;w.path=[];w.walking=false;w.toSeat=false;w.seated=false;w.stand=0;w.alpha=1;w.tp=null;continue;}
-      if (w.walking) this.step(w, s);
+      const visit=this.visits.get(w.id);
+      if(visit&&w.leaving){this.visits.delete(w.id);}
+      else if(visit){
+        if(this.preferences.motion)this.step(w,s);else{w.x=visit.target.x;w.y=visit.target.y;w.path=[];w.walking=false;const done=w.onArrive;w.onArrive=undefined;done?.();}
+        if(w.pending&&!w.show&&now>=w.pending.at)this.commitAct(w,w.pending.act,w.pending.summary,now);
+        continue;
+      }
+      if(meeting&&!w.leaving){
+        w.x=meeting.x;w.y=meeting.y;w.dir=meeting.dir;w.seated=false;w.stand=0;
+        if(w.show&&now-w.show.t0>=w.show.dur)w.show=null;
+        if(w.pending&&!w.show&&now>=w.pending.at)this.commitAct(w,w.pending.act,w.pending.summary,now);
+        continue;
+      }
+      if (w.walking) {
+        if(this.preferences.motion)this.step(w,s);
+        else if(w.path.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))){const p=w.path.at(-1);if(p){w.x=p.x;w.y=p.y;}w.path=[];w.walking=false;const cb=w.onArrive;w.onArrive=undefined;cb?.();}
+      }
       const standing = w.walking || !w.seated || w.act === "waiting" || (w.show && w.show.kind !== "alarm" && this.showStanding(w, now));
       w.stand = clamp(w.stand + (standing ? 1 : -1) * s * 6, 0, 1);
       if (!w.walking && w.seated) {
@@ -677,7 +742,7 @@ export class Crew {
       }
       if (w.pending && !w.show && now >= w.pending.at) this.commitAct(w, w.pending.act, w.pending.summary, now);
       if (w.stickies && now - w.stickyAt > 25_000 && w.act !== "todo") w.stickies = 0;
-      this.ambientFx(w, now);
+      if(this.preferences.ambience&&this.preferences.motion)this.ambientFx(w, now);
     }
     this.board.workers = count;
     this.board.waiting = waiting;
@@ -796,7 +861,7 @@ export class Crew {
 
   pose(w: Worker, now: number): { pose: Pose; dir: Dir; frame: number } {
     const meeting=this.meetingPositions.get(w.id);
-    if(meeting&&!w.leaving)return {pose:'sit',dir:meeting.dir,frame:0};
+    if(meeting&&!w.leaving&&!w.walking){if(w.show?.kind==='cheer')return {pose:'cheer',dir:meeting.dir,frame:0};const speaking=(w.act==='reply'||now-w.shoutAt<5000)&&now-w.lastEventAt<7000;return {pose:speaking?'point':'sit',dir:meeting.dir,frame:0};}
     const sh = w.show;
     if (w.walking || (w.path.length && !w.seated)) {
       const frame = Math.floor(w.walkDist / 4) & 3;
@@ -818,6 +883,14 @@ export class Crew {
       } else if (sh.kind === "point" && t < POINT_DUR - 250) {
         return { pose: "point", dir: sh.side < 0 ? "left" : "right", frame: 0 };
       }
+    }
+    const visual=this.activityState(w);
+    if(!w.walking&&!w.leaving&&!w.show){
+      if(visual.kind==='blocked')return {pose:'think',dir:'down',frame:0};
+      if(visual.kind==='waiting-team'||visual.kind==='paused')return {pose:'lean',dir:'up',frame:0};
+      if(visual.kind==='review')return {pose:'think',dir:'up',frame:Math.floor(now/900)%2};
+      if(visual.kind==='research')return {pose:'think',dir:'up',frame:Math.floor(now/600)%2};
+      if(this.isCoffee(w,now))return {pose:'grab',dir:'down',frame:0};
     }
     if (w.act === "waiting" && w.stand > 0.5) return { pose: "raise", dir: "down", frame: Math.floor(now / 380) & 1 };
     if (!w.seated) return { pose: "stand", dir: "up", frame: 0 };
@@ -1057,7 +1130,7 @@ export class Crew {
 
   private drawWorker(g: CanvasRenderingContext2D, w: Worker, now: number) {
     const { pose, dir, frame } = this.pose(w, now);
-    const spr = sprite(w.look, pose, dir, frame);
+    const spr = sprite(w.look, pose, dir, this.preferences.motion?frame:0);
     const x = Math.round(w.x) - (SPRITE_W >> 1);
     const y = Math.round(w.y) - SPRITE_FOOT;
     let alpha = clamp(w.alpha, 0, 1);
@@ -1172,6 +1245,20 @@ export class Crew {
       return;
     }
     if (now - w.bulbAt < 800) { P.bulb(g, h.x - 2, h.y - 12 - Math.floor((now - w.bulbAt) / 200), now); return; }
+    if(this.meetingPositions.has(w.id)){
+      if((w.act==='reply'||now-w.shoutAt<5000)&&now-w.lastEventAt<7000)P.speechBubble(g,h.x+4,h.y-13,now,brandInk(w.agent));
+      return;
+    }
+    const visual=this.activityState(w);
+    if(visual.kind==='review'){
+      g.fillStyle=C.white;g.fillRect(h.x+7,h.y-7,8,10);g.fillStyle=C.green4;
+      for(let i=0;i<3;i++){g.fillRect(h.x+8,h.y-5+i*3,1,1);g.fillRect(h.x+10,h.y-5+i*3,3,1);}return;
+    }
+    if(visual.kind==='research'){P.magnifier(g,h.x+8,h.y-5);return;}
+    if(visual.kind==='blocked'||visual.kind==='paused'||visual.kind==='waiting-team'){
+      g.fillStyle=visual.color;g.fillRect(h.x+7,h.y-5,2,7);g.fillRect(h.x+11,h.y-5,2,7);return;
+    }
+    if(this.isCoffee(w,now)){P.trinket(g,'mug',w.x+5,w.y-9,w.seed,now);return;}
     if (!w.seated || w.stand > 0.5) return;
     const main = w.seat.kind === "main";
     switch (w.act) {
