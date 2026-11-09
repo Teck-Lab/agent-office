@@ -496,7 +496,7 @@ async function main(): Promise<void> {
     source = { stop: () => (local.stop(), remotes.stop()) };
     // A client that connects late learns which remotes are down from the snapshot (Snapshot.hosts).
     const snapshot = state.snapshot.bind(state);
-    state.snapshot = () => ({ ...snapshot(), hosts: remotes.hosts() });
+    state.snapshot = () => { const current=snapshot();return {...current,hosts:[...remotes.hosts(),...(current.hosts??[])]}; };
   }
   state.start();
 

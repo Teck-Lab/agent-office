@@ -9,6 +9,8 @@ import { BRAND, type OfficeEvent, type Snapshot } from "../../src/shared/events.
 import { canRecord, record, ReplayBuffer, screenshot, type Recording } from "./capture.ts";
 import type { ConnState } from "./connection.ts";
 import { h } from "./dom.ts";
+import {createAppearance} from './appearance.ts';
+import {createWhiteboard} from "./whiteboard.ts";
 import { createFeed } from "./feed.ts";
 import { createInspector } from "./inspector.ts";
 import { agentName, hostLabel, isRemote } from "./logos.ts";
@@ -27,6 +29,8 @@ import { controlToken } from "./control/token.ts";
 import type { ControlSession } from "../../src/shared/control.ts";
 
 export interface Chrome {
+  clearSelection?():void;
+  setFloorContext?(scoped:boolean):void;
   load(s: Snapshot): void;
   apply(e: OfficeEvent): void;
   connection(state: ConnState, retryInMs?: number): void;
@@ -79,6 +83,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   const topbar = createTopbar({ onNeedsYou: nextWaiting });
   const prefs = readPrefs();
   let selected: string | null = null;
+  let scopedFloor=false;
   let crt = !!prefs.crt;
   let mode: RenderMode = "pixel";
   let streamMode = false;
@@ -96,6 +101,14 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     }
   };
 
+  const whiteboard=createWhiteboard({onMeeting:key=>scene.setMeetingSelection?.(key),onChoose:()=>updateBoard()});
+  function updateBoard(){
+    const v=whiteboard.update(model.workers.values());
+    scene.setWhiteboard?.(v?{title:v.plan?.goal?.objective??'No native goal',current:v.current,completed:v.completed,total:v.total,blocked:v.blocked,state:v.plan?.goal?.status??'Awaiting goal'}:null);
+  }
+  scene.onWhiteboard?.(()=>whiteboard.show());
+  const appearance=createAppearance(p=>scene.setAppearance?.(p));
+  const hoverInfo=h('div',{class:'office-hover',attrs:{hidden:true,role:'tooltip'}});
   const inspector = createInspector({ onClose: () => select(null), onFocus: (id) => safe(() => scene.focus(id)) });
   const feed = createFeed({ onPick: (id) => select(id, true), onToggle: () => setFeed(!feed.isOpen()) });
 
@@ -188,7 +201,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   const hint = createStreamHint(() => setStream(false));
   const flashRoot = h("div", { class: "flash-root" });
 
-  root.append(topbar.el, feed.el, feed.tab, inspector.el, panel.el, settingsSlot, toolbar.el, toasts.el, conn.el, empty.el, hint.el, hint.corner, sessionList.el, toolbar.tip, help.el, hireSlot, flashRoot);
+  root.append(appearance.el,appearance.tab,hoverInfo,whiteboard.el,whiteboard.tab,topbar.el, feed.el, feed.tab, inspector.el, panel.el, settingsSlot, toolbar.el, toasts.el, conn.el, empty.el, hint.el, hint.corner, sessionList.el, toolbar.tip, help.el, hireSlot, flashRoot);
 
   /*
    * Code before it is needed. The pointer on a worker the office started, or on a "Your agents"
@@ -199,7 +212,14 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     const s = store.forWorker(workerId);
     if (s) prefetchViews([s.mode]);
   };
-  scene.onHover?.((id) => viewsFor(id));
+  let hoverId:string|null=null;
+  const updateHover=(id:string|null)=>{
+    hoverId=id;
+    viewsFor(id);const w=model.get(id);hoverInfo.hidden=!w;
+    if(w){const tasks=w.plan?.phases.flatMap(p=>p.tasks)??[];const current=tasks.find(t=>t.status==='in_progress')??tasks.find(t=>t.status==='blocked');
+      hoverInfo.textContent=[w.orchestration?.role??w.role??w.agent,w.project,current?.content??w.plan?.goal?.objective??w.summary??'',current?.blocker??'',w.orchestration?.issue??'',w.parentId?'Helper of '+w.parentId:''].filter(Boolean).join('\n');}
+  };
+  scene.onHover?.(updateHover);
   toolbar.el.querySelector(".tb-sessions")?.addEventListener("pointerenter", () => prefetchViews([...new Set(store.list().map((s) => s.mode))]));
   const hireBtn = toolbar.el.querySelector(".tb-hire");
   for (const ev of ["pointerenter", "focus"]) {
@@ -311,7 +331,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   /* Panels hidden by CSS stay out of the tab order and the a11y tree. */
   function syncInert(): void {
     const phone = isPhone();
-    for (const el of [topbar.el, toolbar.el, inspector.el, empty.el, panel.el, settings?.el]) if (el) el.inert = streamMode;
+    for (const el of [topbar.el, toolbar.el, inspector.el, empty.el, panel.el, settings?.el, appearance.tab, whiteboard.tab]) if (el) el.inert = streamMode;
     feed.el.inert = streamMode || (!feed.isOpen() && !phone);
     feed.tab.inert = streamMode || feed.isOpen() || phone;
   }
@@ -329,6 +349,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
 
   function setStream(on: boolean): void {
     streamMode = on;
+    if(on){hoverInfo.hidden=true;appearance.el.close();}
     safe(() => scene.setDirector?.(on));
     document.body.classList.toggle("stream", on);
     toolbar.tip.hidden = true;
@@ -542,7 +563,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
 
   function refreshEmpty(): void {
     if (model.loaded) {
-      if (model.workers.size === 0 && !model.demo) empty.show("empty");
+      if (model.workers.size === 0 && !model.demo && !scopedFloor) empty.show("empty");
       else empty.hide();
     } else if (connState === "offline") {
       empty.show("offline");
@@ -645,6 +666,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     if (help.isOpen() && ev.key !== "?") return;
     if (hire?.isOpen()) return;
+    if (whiteboard.isOpen() || appearance.el.open) return;
     if (ev.key === "Escape") {
       if (settings?.isOpen()) closeSettings();
       else if (panel.isOpen()) closePanel();
@@ -652,8 +674,10 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       else if (selected) select(null);
       return;
     }
+    if (whiteboard.isOpen()) return;
     if (ev.repeat) return;
     const actions: Record<string, () => void> = {
+      b: () => whiteboard.show(),
       n: openHire,
       a: () => setMode(mode === "pixel" ? "ascii" : "pixel"),
       c: () => setCrt(!crt),
@@ -679,14 +703,19 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
   }, 1000);
 
   return {
+    clearSelection(){select(null);hoverId=null;hoverInfo.hidden=true;for(const timer of waitTimers.values())clearTimeout(timer);waitTimers.clear();flipped.clear();},
+    setFloorContext(scoped){if(scopedFloor!==scoped){scopedFloor=scoped;refreshEmpty();}},
     load(s) {
       // a (re)connect: the control plane may have changed while we were away
       void store.fromSnapshot(s.control);
       model.load(s);
+      scene.setMeetingSelection?.(whiteboard.setMeetings(s.meetings??[]));
+      updateBoard();
       safe(() => scene.load(s));
+      if(hoverId)updateHover(hoverId);
       topbar.setDemo(!!s.demo);
       topbar.update(model, false);
-      feed.reset(s.recent, model);
+      feed.reset(s.recent.filter(e=>e.kind!=="host_status"), model);
       toasts.clear();
       refreshEmpty();
       if (selected) {
@@ -696,8 +725,12 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       }
     },
     apply(e) {
+      if(e.meetings)scene.setMeetingSelection?.(whiteboard.setMeetings(e.meetings));
       const change = model.apply(e);
+      if(hoverId)updateHover(change.renamed?.from===hoverId?change.renamed.to:hoverId);
+      updateBoard();
       safe(() => scene.apply(e));
+      if(e.kind==="host_status"){topbar.update(model,true);return;}
       if (panel.isOpen()) panel.workerEvent(e);
       if (change.renamed) {
         // the replacing worker takes over in place: selection, feed rows and panel follow it
@@ -737,6 +770,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     },
     connection(state, retryInMs) {
       connState = state;
+      scene.setConnection?.(state);
       conn.set(state, retryInMs);
       topbar.setConnected(state === "live");
       refreshEmpty();

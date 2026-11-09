@@ -6,6 +6,9 @@
  * "$ npm test", capped at SUMMARY_MAX characters.
  */
 
+import type { OfficePlan } from './plan.ts';
+import type {MeetingCommand,OfficeMeeting} from './meetings.ts';
+
 export type AgentKind =
   | "omp"
   | "claude"
@@ -83,12 +86,16 @@ export type ToolCategory =
   | "other";
 
 export type EventKind =
+  | "host_status"    // server-observed producer connection, never worker activity
   | "session_start"  // first sighting of a session (also sent on backfill)
   | "prompt"         // the human sent a message
   | "thinking"       // model is reasoning / generating
   | "tool_start"     // a tool call was issued
   | "tool_end"       // its result came back (isError set if it failed)
   | "reply"          // assistant text addressed to the human
+  | "meeting"        // explicit main-session meeting presentation
+  | "plan"           // native OMP goal/todo snapshot; preserves activity
+  | "usage"          // cumulative usage metadata; does not change the worker's pose
   | "waiting"        // turn finished, agent is waiting on the human
   | "test_fail"      // a test command exited non-zero  -> table flip
   | "test_pass"      // a test command passed           -> celebration
@@ -117,10 +124,15 @@ export interface OfficeEvent {
   project: string;
   /** Set for workers in a sandbox or on another machine. */
   host?: Host;
+  hostStatus?: HostStatus;
   /** Rendering placement; the real execution host is retained above. */
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  nativeKind?: "main" | "sub";
+  meeting?: MeetingCommand;
+  meetings?: OfficeMeeting[];
+  plan?: OfficePlan | null;
   /** Full cwd, shown only in the inspector. */
   cwd?: string;
   model?: string;
@@ -132,6 +144,8 @@ export interface OfficeEvent {
   isError?: boolean;
   /** Tokens this line reported (input + output), when the transcript has it. */
   tokens?: number;
+  /** Monotonic own-session token total. Replays/resumes take max rather than adding. */
+  tokenTotal?: number;
   /** Subagent role / description, e.g. "Explore", "general-purpose". */
   role?: string;
   /**
@@ -148,6 +162,7 @@ export interface Snapshot {
   startedAt: string;
   demo: boolean;
   workers: WorkerState[];
+  meetings?: OfficeMeeting[];
   recent: OfficeEvent[]; // last <= 200 events, oldest first
   /** Remotes being watched and whether they answer (src/remote/index.ts hosts()). */
   hosts?: HostStatus[];
@@ -180,6 +195,8 @@ export interface WorkerState {
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */
   orchestration?: OrcaCoordination | null;
+  nativeKind?: "main" | "sub";
+  plan?: OfficePlan | null;
   /** Last status line / mood the agent set through MCP, if any. */
   mood?: string;
   cwd?: string;

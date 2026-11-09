@@ -43,7 +43,7 @@ export interface HostSummary {
 
 const HISTORY = 12;
 /** Events an agent sends through MCP alongside its work; they never change what it is doing. */
-const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate"]);
+const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage", "plan", "meeting"]);
 const OFFLINE = /^remote offline/i;
 const isRemote = (h?: Host): h is Host => !!h && h.kind !== "local";
 
@@ -56,6 +56,7 @@ export function moodOf(e: Pick<OfficeEvent, "tool" | "summary">): string {
 
 export class OfficeModel {
   readonly workers = new Map<string, Worker>();
+  private readonly tokenHighWater = new Map<string, number>();
   toolCalls = 0;
   tokens = 0;
   flips = 0;
@@ -67,6 +68,7 @@ export class OfficeModel {
 
   load(s: Snapshot): void {
     this.workers.clear();
+    this.tokenHighWater.clear();
     this.hostsSeen.clear();
     this.offline.clear();
     this.demo = !!s.demo;
@@ -77,6 +79,7 @@ export class OfficeModel {
     for (const w of this.workers.values()) {
       this.toolCalls += w.toolCalls || 0;
       this.tokens += w.tokens || 0;
+      this.tokenHighWater.set(w.workerId, w.tokens || 0);
     }
     for (const w of this.workers.values()) if (isRemote(w.host)) this.hostsSeen.set(w.host.id, w.host);
     this.flips = 0;
@@ -104,6 +107,10 @@ export class OfficeModel {
 
   apply(e: OfficeEvent): Change {
     const change: Change = {};
+    if(e.kind==='host_status'){
+      if(e.hostStatus){const {host,online}=e.hostStatus;this.hostsSeen.set(host.id,host);if(online)this.offline.delete(host.id);else this.offline.add(host.id);change.hosts=true;}
+      return change;
+    }
     if (isRemote(e.host)) {
       const known = this.hostsSeen.has(e.host.id);
       this.hostsSeen.set(e.host.id, e.host);
@@ -112,11 +119,14 @@ export class OfficeModel {
         this.offline.add(e.host.id);
         // the notice is about the host, not a worker
         if (!this.workers.has(e.workerId)) return change;
-      } else if (this.offline.delete(e.host.id) || !known) change.hosts = true;
+      } else if (!this.offline.has(e.host.id) || !["session_end","subagent_end","idle"].includes(e.kind)) {if (this.offline.delete(e.host.id) || !known) change.hosts = true;}
     }
     if (e.kind === "session_start" && e.replaces && e.replaces !== e.workerId) {
       const old = this.workers.get(e.replaces);
       if (old) {
+        const oldTotal = this.tokenHighWater.get(e.replaces) ?? old.tokens;
+        this.tokenHighWater.delete(e.replaces);
+        this.tokenHighWater.set(e.workerId, Math.max(this.tokenHighWater.get(e.workerId) ?? 0, oldTotal));
         this.workers.delete(e.replaces);
         if (!this.workers.has(e.workerId)) {
           old.workerId = e.workerId;
@@ -143,6 +153,7 @@ export class OfficeModel {
         host: e.host,
         placement: e.placement,
         orchestration: e.orchestration,
+        plan: e.plan,
         status: SIGNALS.has(e.kind) ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
@@ -155,12 +166,16 @@ export class OfficeModel {
 
     if (e.kind === "test_fail" || e.kind === "flip") this.flips++;
     if (e.kind === "tool_start") this.toolCalls++;
-    if (e.tokens && e.tokens > 0) this.tokens += e.tokens;
+    const previousTokens = this.tokenHighWater.get(e.workerId) ?? w?.tokens ?? 0;
+    const tokensDelta = e.tokenTotal !== undefined ? Math.max(0, e.tokenTotal - previousTokens) : (e.tokens ?? 0);
+    if (tokensDelta > 0) this.tokens += tokensDelta;
+    if (e.tokenTotal !== undefined || tokensDelta > 0) this.tokenHighWater.set(e.workerId, previousTokens + tokensDelta);
     if (!w) return change;
 
     if (e.project) w.project = e.project;
     if (e.cwd) w.cwd = e.cwd;
     if (e.model) w.model = e.model;
+    if (e.plan !== undefined) w.plan = e.plan;
     if (e.role) w.role = e.role;
     if (e.host) w.host = e.host;
     if (e.parentId) w.parentId = e.parentId;
@@ -173,7 +188,7 @@ export class OfficeModel {
         const child = this.workers.get(id)!; child.orchestration = w.orchestration; child.placement = w.placement;
       }
     }
-    w.lastTs = e.ts;
+    if(e.kind!=="plan"&&e.kind!=="meeting")w.lastTs = e.ts;
     if (e.kind === "status") w.mood = moodOf(e) || undefined;
     if (e.kind !== "tool_end" && !SIGNALS.has(e.kind)) w.status = e.kind;
     if (e.kind === "tool_start") {
@@ -190,7 +205,8 @@ export class OfficeModel {
     } else if (e.summary && e.kind !== "tool_end" && !SIGNALS.has(e.kind)) {
       w.summary = e.summary;
     }
-    if (e.tokens && e.tokens > 0) w.tokens += e.tokens;
+    if (e.tokenTotal !== undefined) w.tokens = Math.max(w.tokens, e.tokenTotal);
+    else if (e.tokens && e.tokens > 0) w.tokens += e.tokens;
     push(w, e);
     change.worker = w;
 
@@ -234,7 +250,7 @@ export class OfficeModel {
 }
 
 function push(w: Worker, e: OfficeEvent): void {
-  if (e.kind === "thinking" || e.kind === "reply" || (e.kind === "tool_end" && !e.isError)) return;
+  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "plan" || e.kind === "meeting" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
   w.history.push({
     seq: e.seq,
     ts: parseTs(e.ts),

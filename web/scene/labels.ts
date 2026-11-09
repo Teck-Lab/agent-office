@@ -103,6 +103,7 @@ export interface LabelOpts {
   dpr: number;
   now: number;
   ascii: boolean;
+  plan?:import("./whiteboard.ts").WhiteboardSummary|null;
   /** the wall TV, written as real text in ASCII mode */
   tv?: { x: number; y: number; w: number; h: number };
 }
@@ -121,7 +122,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
   const placed: Box[] = [];
   const signs: Box[] = [];
   const hitboxes: Box[] = [];
-  if (o.ascii && o.tv) asciiTv(g, crew, cam, o.tv, now);
+  if (o.ascii && o.tv) asciiTv(g, crew, cam, o.tv, now,o.plan);
 
   /* ---- pod signs: the real vector mark over the pixel one (and in ASCII
    * mode, where the sign is not in the sampled picture, the whole sign) */
@@ -230,6 +231,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
   };
   /* Labels stay inside the worker's own zone (the office, or the cloud wing behind its glass). */
   const zoneOf = (w: Worker) => {
+    if(crew.meetingMember(w.id))return {x0:edge,x1:cam.vw-edge};
     const r = w.seat.block.zone === "cloud" && crew.layout.wing ? crew.layout.wing : crew.layout.main;
     const [x0] = cam.toScreen(r.x + 4, 0);
     const [x1] = cam.toScreen(r.x + r.w - 4, 0);
@@ -253,7 +255,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
     const ink = brandInk(w.agent);
 
     // --- flip speech bubble (the money shot)
-    if (w.show?.kind === "flip") {
+    if (w.show?.kind === "flip" && !crew.unavailable(w)) {
       const t = now - w.show.t0;
       let say = "";
       if (t > 900 && t < 3900) say = "(╯°□°)╯︵ ┻━┻";
@@ -290,7 +292,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
         placed.push({ x: bx, y: by, w: bw, h: bh });
       }
     }
-    const flipping = w.show?.kind === "flip";
+    const flipping = w.show?.kind === "flip" && !crew.unavailable(w);
 
     // --- the tag above the head: mood if set, else agent / role
     const mood = w.mood;
@@ -379,15 +381,17 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
     }
 
     // --- status chip under the chair
-    const fresh = now - w.summaryAt < 9000;
+    const visual=crew.activityState(w),task=crew.taskText(w);
+    const persistent=crew.preferences.labels!=='quiet';
+    const fresh = persistent;
     // A waiting worker always gets its chip: it is the one thing on screen the viewer has to act on.
-    const wantChip = !w.leaving && !flipping && (w.needsHuman || (w.summary && (vip || (!folded(w) && ((fresh && (!crowded || spent < budget * 0.7)) || zoomedIn)))));
+    const wantChip = !w.leaving && !flipping && (persistent||vip||w.needsHuman) && (w.needsHuman || ((w.summary||persistent) && (vip || (!folded(w) && ((fresh && (!crowded || spent < budget * 0.7)) || zoomedIn)))));
     if (wantChip && (vip || w.needsHuman || spent < budget)) {
-      const raw = w.needsHuman ? waitText(w) : w.summary;
+      const raw = crew.unavailable(w) ? visual.label : w.needsHuman ? waitText(w) : visual.label+(crew.preferences.labels==='tasks'&&task?' / '+task:'');
       const s = fit(FONT(), raw, (sel ? 44 : 26) * 6);
       const cw = textW(s, fs) + pad * 2 + 4 * fs;
       const cy = Math.round(fy + 6 * z);
-      const cands: Box[] = [0, 1, -1].map((k) => onRug(w.seat.block, inZone(w, { x: inX(hx - cw / 2 + k * cw * 0.6, cw), y: cy + (k ? Math.round(lineH * 0.6) : 0), w: cw, h: lineH + pad })));
+      const cands: Box[] = [0, 1, -1].map((k) => (crew.meetingMember(w.id)?(b:Box)=>b:(b:Box)=>onRug(w.seat.block,b))(inZone(w, { x: inX(hx - cw / 2 + k * cw * 0.6, cw), y: cy + (k ? Math.round(lineH * 0.6) : 0), w: cw, h: lineH + pad })));
       // A waiting worker's chip may cover a pod sign, never another label: with no such spot, or in a pod
       // too narrow for them all, it joins the pod's "N need you" chip below instead.
       const pooled = w.needsHuman && !sel && !hov && foldAll.has(w.seat.block);
@@ -405,7 +409,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
         const age = clamp((now - w.summaryAt) / 9000, 0, 1);
         g.globalAlpha = vip || w.needsHuman ? 0.95 : 0.88 - age * 0.3;
         pill(g, chip.x, chip.y, chip.w, chip.h, fs, bg, w.needsHuman ? rgba(C.white, 0.5 + pulse * 0.5) : undefined);
-        g.fillStyle = w.needsHuman ? C.white : ACT_COL[w.act];
+        g.fillStyle = w.needsHuman ? C.white : visual.color;
         g.fillRect(chip.x + pad, chip.y + pad, 2 * fs, lineH - pad);
         text(g, s, w.needsHuman ? C.white : C.slate5, chip.x + pad + 4 * fs, chip.y + fs, fs);
         g.globalAlpha = 1;
@@ -497,7 +501,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
 }
 
 /** The scoreboard as a terminal readout: header, three counters, and the shout ticker. */
-function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: number; y: number; w: number; h: number }, now: number) {
+function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: number; y: number; w: number; h: number }, now: number,plan?:import("./whiteboard.ts").WhiteboardSummary|null) {
   const [x0, y0] = cam.toScreen(tv.x, tv.y);
   const [x1, y1] = cam.toScreen(tv.x + tv.w, tv.y + tv.h);
   const W = x1 - x0, H = y1 - y0;
@@ -510,6 +514,11 @@ function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: 
   g.clip();
   g.fillStyle = "#09070c";
   g.fillRect(x0, y0, W, H);
+  if(plan){
+    text(g,'PLAN '+plan.completed+'/'+plan.total+(plan.blocked?' !'+plan.blocked:''),C.gold3,x0+3*s,y0+3*s,s);
+    text(g,asciiOnly(plan.title),C.white,x0+3*s,y0+12*s,s);
+    text(g,asciiOnly(plan.current??plan.state),C.blue5,x0+3*s,y0+21*s,s);
+  }else{
   text(g, "AGENT OFFICE", C.gold3, x0 + 3 * s, y0 + 3 * s, s);
   if (Math.floor(now / 600) % 2 === 0) { g.fillStyle = C.red3; g.fillRect(x1 - 6 * s, y0 + 4 * s, 3 * s, 3 * s); }
   const cols: [number, string, string][] = [[b.workers, "crew", C.white], [b.tools, "tools", C.blue5], [b.flips, "flips", C.terra4]];
@@ -521,6 +530,7 @@ function asciiTv(g: CanvasRenderingContext2D, crew: Crew, cam: Camera, tv: { x: 
     text(g, v, c, cx - textW(v, ns) / 2, y0 + 13 * s, ns);
     text(g, label, C.slate3, cx - textW(label, s) / 2, y0 + 13 * s + 9 * ns, s);
   });
+  }
   const shout = b.shouts[b.shouts.length - 1];
   const ty = y1 - 10 * s;
   if (shout && now - shout.t0 < SHOUT_MS) {

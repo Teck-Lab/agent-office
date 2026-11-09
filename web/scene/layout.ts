@@ -311,15 +311,16 @@ export class Layout {
 
   /* ----------------------------------------------------------- seating */
 
-  private podFor(agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement): Block {
+  private podFor(agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement, team?:string): Block {
     if (placement !== "office" && host && host.kind !== "local") {
-      const key = "host:" + host.id;
+      const key = "host:" + host.id + (team?":team:"+team:"");
       const have = this.blocks.get(key);
       if (have) { have.dying = false; return have; }
-      return this.newBlock(key, "cloud", agent, project, host, cloudLabel(host));
+      return this.newBlock(key, "cloud", agent, project, host, cloudLabel(host)+(team?" / "+hash(team).toString(16).slice(-4):""));
     }
     for (let n = 0; n < 20; n++) {
-      const key = placement === "office" && host ? `office:${host.id}:${project}:${n}` : `local:${project}:${n}`;
+      const scope=team?project+":"+team:project;
+      const key = placement === "office" && host ? `office:${host.id}:${scope}:${n}` : `local:${scope}:${n}`;
       const b = this.blocks.get(key);
       if (!b) return this.newBlock(key, "local", agent, project, host, n ? `${project} ${n + 1}` : project);
       const desks = b.stations.filter((s) => !s.hot);
@@ -342,10 +343,10 @@ export class Layout {
     return b;
   }
 
-  allocMain(id: string, agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement): Seat {
+  allocMain(id: string, agent: AgentKind, project: string, host: Host | undefined, now: number, placement?: Placement, team?:string): Seat {
     const have = this.seats.get(id);
     if (have) return have;
-    const b = this.podFor(agent, project, host, now, placement);
+    const b = this.podFor(agent, project, host, now, placement, team);
     let st = b.stations.find((s) => !s.hot && !s.main && !s.interns.some(Boolean));
     if (!st) {
       st = { main: null, interns: [], seats: 0, ox: 0, x: NaN, oy: 0, y: NaN, emptyAt: 0, benchAt: 0 };
@@ -442,7 +443,7 @@ export class Layout {
   /** An empty, dimmed pod for a remote that dropped while nobody worked there. */
   ghostHost(host: Host, agent: AgentKind) {
     const key = "host:" + host.id;
-    if (this.blocks.has(key)) return;
+    if ([...this.blocks.values()].some(b=>b.host?.id===host.id)) return;
     const b = this.newBlock(key, "cloud", agent, host.name, host, cloudLabel(host));
     b.offline = true;
     b.stations.push({ main: null, interns: [], seats: 0, ox: 0, x: NaN, oy: 0, y: NaN, emptyAt: Infinity, benchAt: 0 });

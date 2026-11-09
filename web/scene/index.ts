@@ -10,6 +10,8 @@
  * reads as blank and people, desks and screens carry the glyphs.
  */
 import type { CreateOfficeScene, OfficeEvent, OfficeScene, RenderMode, Snapshot } from "../contract.ts";
+import {DEFAULT_VIEW,cleanView,viewHour,type ViewPreferences} from './presentation.ts';
+import {drawRelationships} from './view-effects.ts';
 import { C, rgba } from "./palette.ts";
 import { Crew, brandInk, type DrawCall } from "./workers.ts";
 import { Cat } from "./cat.ts";
@@ -21,10 +23,13 @@ import { Ascii } from "./ascii.ts";
 import { furnitureFigures, workerFigures } from "./figures.ts";
 import { Crt } from "./crt.ts";
 import * as R from "./room.ts";
+import {drawMeetingRoom,meetingSeats} from './meeting-room.ts';
+import type {OfficeMeeting} from '../../src/shared/meetings.ts';
+import {type WhiteboardSummary} from "./whiteboard.ts";
 import * as P from "./props.ts";
 import { DESK_W, POD_H, WALL_H, deskTop } from "./layout.ts";
 import { BRAND, HOST_BRAND } from "../../src/shared/events.ts";
-import { FONT, fit, textBitmap } from "./font.ts";
+import { FONT, MICRO, fit, textBitmap } from "./font.ts";
 import { drawMark } from "./logos.ts";
 import { bitmap, clamp, ctx2d, makeCanvas, type Bitmap } from "./util.ts";
 
@@ -71,6 +76,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   const g = ctx2d(canvas, { alpha: false });
 
   let clock = 0;
+  let floorCode="ALL";
   const crew = new Crew(() => clock);
   const cat = new Cat();
   const sky = new Sky(7);
@@ -84,16 +90,21 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   let asciiAmt = 0;
   let modeT0 = -1e9;
   let crtOn = false;
+  let preferences:ViewPreferences={...DEFAULT_VIEW};
   let hourOverride: number | null = null;
   let weather: "clear" | "rain" | null = null;
+  let meetings:OfficeMeeting[]=[],meetingKey='';
+  const activeMeeting=()=>meetings.find(m=>m.sourceId+':'+m.id===meetingKey)??meetings[0]??null;
+  let boardSummary:WhiteboardSummary|null=null, boardCb:(()=>void)|null=null;
+  const boardAt=(x:number,y:number)=>{const [wx,wy]=cam.toWorld(x,y);return [plan.meeting,plan.tv].some(r=>wx>=r.x&&wx<=r.x+r.w&&wy>=r.y&&wy<=r.y+r.h);};
   let selectCb: ((id: string | null) => void) | null = null;
   let hoverCb: ((id: string | null) => void) | null = null;
   let labelBoxes: { x: number; y: number; w: number; h: number; id?: string }[] = [];
 
   // world buffers: the pixel office, and the clean one ASCII mode samples
   let layoutVersion = -1;
-  let room = crew.layout.room();
-  let plan = R.plan(crew.layout.main, crew.layout.wing, room);
+  let plan = R.plan(crew.layout.main, crew.layout.wing, crew.layout.room());
+  let room = plan.room;
   let origin = { x: 0, y: 0 };
   let size = { w: 1, h: 1 };
   let world: Bitmap = bitmap(1, 1);
@@ -105,8 +116,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   function rebuild() {
     layoutVersion = crew.layout.version;
-    room = crew.layout.room();
-    plan = R.plan(crew.layout.main, crew.layout.wing, room);
+    plan = R.plan(crew.layout.main, crew.layout.wing, crew.layout.room());
+    room = plan.room;
     origin = { x: room.x - plan.pad, y: room.y - plan.pad };
     const ns = { w: room.w + plan.pad * 2, h: room.h + plan.pad * 2 };
     if (ns.w !== size.w || ns.h !== size.h) {
@@ -117,7 +128,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       world = { c: wc, g: ctx2d(wc), w: size.w, h: size.h };
       worldAscii = null;
     }
-    staticLayer = R.build(plan, origin, size);
+    staticLayer = R.build(plan, origin, size,false,preferences.theme,preferences.decor);
     staticAscii = null;
     crew.setElevatorX(plan.elevator.doorX);
     crew.fx.seedDust(plan.windows.filter((w) => w.x < crew.layout.main.x + crew.layout.main.w).map((w) => ({ x: w.x, y: WALL_H, w: w.w + 30, h: 46 })));
@@ -125,7 +136,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   /** x extent of the pods plus a margin, so auto-fit never crops a desk. */
   function podSpan(): { x0: number; x1: number } | undefined {
-    let x0 = Infinity, x1 = -Infinity;
+    // Keep both the meeting area and TV visible during portrait auto-fit.
+    let x0 = plan.meeting.x, x1 = plan.tv.x+plan.tv.w;
     for (const b of crew.layout.blocks.values()) { x0 = Math.min(x0, b.tx); x1 = Math.max(x1, b.tx + b.w); }
     return isFinite(x0) ? { x0: x0 - 26, x1: x1 + 26 } : undefined;
   }
@@ -206,11 +218,12 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       }
     }
     for (const d of crew.layout.decor) {
+      if(preferences.decor==='minimal'&&d.kind!=='racks')continue;
       if (d.kind === "lounge") L.push({ x: d.x + d.w - 4, y: d.y + 40, r: 40, cut: 0.5 * night, color: C.gold3, glow: 0.12 * night, flat: 0.6 });
       if (d.kind === "arcade") L.push({ x: d.x + d.w / 2, y: d.y + 34, r: 30, cut: 0.35 * night, color: C.plum3, glow: 0.16 * night, flat: 0.7 });
     }
     for (const w of crew.workers.values()) {
-      if (w.gone || w.leaving) continue;
+      if (w.gone || w.leaving || crew.unavailable(w)) continue;
       const scr = crew.screenOf(w, now);
       const glow = P.screenGlow(scr, w.agent);
       if (!glow) continue;
@@ -286,7 +299,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   function hourNow() {
     if (hourOverride != null) return hourOverride;
     const d = new Date();
-    return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600;
+    return viewHour(preferences,d);
   }
 
   /** The floor-level layer every frame: fibres, then each pod's rug and sign. */
@@ -305,6 +318,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
 
   function decorCalls(calls: DrawCall[], now: number) {
     for (const d of crew.layout.decor) {
+      if(preferences.decor==='minimal'&&d.kind!=='racks')continue;
       if (d.kind === "racks") {
         calls.push({ y: d.y + 58, fn: (g) => P.rackRow(g, d.x, d.y, d.w, now, d.seed) });
         continue;
@@ -333,9 +347,9 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     wg.clearRect(0, 0, size.w, size.h);
     wg.translate(-origin.x, -origin.y);
     const pan = (cam.x - (room.x + room.w / 2)) * 1;
-    const rain = weather ? weather === "rain" : rainyToday();
+    const rain = weather ? weather === 'rain' : preferences.weather==='date'?rainyToday():preferences.weather==='rain';
     // ASCII keeps its windows empty: a sampled skyline is just noise
-    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, now, pan, rain);
+    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, preferences.motion?now:0, pan, rain,preferences.season,preferences.ambience);
     if (asciiPass) {
       // only the outline plan: the ground stays blank in ASCII
       wg.drawImage(staticAscii!.c, origin.x, origin.y);
@@ -349,11 +363,18 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, 0, 2, y1 + 6); wg.fillRect(room.x + room.w, 0, 2, y1 + 6);
       wg.fillStyle = C.ink3; wg.fillRect(room.x - 2, -3, room.w + 4, 3);
     }
-    R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass);
+    R.drawLive(wg, plan, now, new Date(), crew.board, crew.activity(), asciiPass,boardSummary);
+    drawMeetingRoom(wg,plan.meeting,activeMeeting(),asciiPass,preferences);
+    if(!asciiPass){
+      if(preferences.decor==='plants')for(const dx of [24,140])P.plantTall(wg,plan.meeting.x+dx,190,dx);
+      if(preferences.ambience&&preferences.motion)P.coffeeSteam(wg,plan.coffee.x,plan.coffee.y,now);
+    }
     const el = plan.elevator;
     if (!asciiPass) {
       if (crew.elevator.open > 0.01) P.elevatorInside(wg, el.x, el.y);
       P.elevatorDoors(wg, el.x, el.y, crew.elevator.open, now, now - crew.elevator.ding < 1600 ? 1 : 0);
+      const floor=textBitmap(MICRO(),fit(MICRO(),floorCode,12),C.gold3);
+      wg.fillStyle=C.ink;wg.fillRect(el.x+11,el.y-P.ELEV_H-8,14,6);wg.drawImage(floor.c,el.x+12,el.y-P.ELEV_H-7);
     } else {
       const half = (P.ELEV_W - 4) / 2, gap = Math.round(crew.elevator.open * half);
       wg.fillStyle = C.slate4;
@@ -370,11 +391,12 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       }
     }
     drawPods(wg, now, asciiPass);
+    if(!asciiPass)drawRelationships(wg,crew);
     const calls: DrawCall[] = [];
     const over: DrawCall[] = [];
     crew.draw(calls, over, now, asciiPass);
     if (!asciiPass) decorCalls(calls, now);
-    if (!asciiPass) cat.draw(calls, now);
+    if (!asciiPass&&preferences.ambience) cat.draw(calls, preferences.motion?now:0);
     if (plan.uplink) {
       const u = plan.uplink;
       calls.push({ y: u.y + 6, fn: (g) => R.drawUplink(g, plan, now, crew.activity()) });
@@ -389,7 +411,9 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     }
     over.sort((a, b) => a.y - b.y);
     for (const c of over) c.fn(wg);
-    crew.fx.draw(wg, now);
+    if(preferences.motion&&crew.liveFeed)crew.fx.draw(wg, now);
+    crew.handoffs.draw(wg,crew.workers,now,preferences.motion&&preferences.handoffs&&crew.liveFeed,w=>crew.unavailable(w));
+    if(!crew.liveFeed){const warning=textBitmap(FONT(),'LIVE FEED DISCONNECTED - LAST KNOWN STATE','#f2c879');wg.fillStyle='#171927';wg.fillRect(plan.meeting.x,room.y+room.h-16,warning.w+12,14);wg.drawImage(warning.c,plan.meeting.x+6,room.y+room.h-13);}
     return st;
   }
 
@@ -476,9 +500,11 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     clock += dtw;
     const t0 = performance.now();
     if (crew.layout.version !== layoutVersion) rebuild();
+    crew.setMeeting(activeMeeting(),meetingSeats(plan.meeting,preferences.layout),{x:plan.meeting.x+plan.meeting.w+8,y:144});
     crew.update(dtw);
     if (crew.layout.version !== layoutVersion) rebuild();
     crew.showFx(clock, (amt) => {
+      if(!preferences.motion)return;
       shake = Math.max(shake, amt);
       if (amt > 6) {
         cat.startle(clock);
@@ -488,7 +514,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     });
     // a side panel is open (inspector, session, settings): no punch-ins on other people's moments
     const panelOpen = !director && (cam.overlay.left > 0 || cam.overlay.right > 0 || cam.overlay.bottom > 0);
-    if (!cut && cam.mode === "auto" && !panelOpen && clock - lastCut > (director ? 5000 : 7000)) {
+    if (preferences.motion && !cut && cam.mode === "auto" && !panelOpen && clock - lastCut > (director ? 5000 : 7000)) {
       const c = nextCut();
       if (c) {
         cut = c;
@@ -499,7 +525,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     }
     if (cut && (cam.mode !== "auto" || panelOpen || clock > cut.until || !crew.workers.has(cut.id))) cut = null;
     bars = clamp(bars + (cut && director ? 1 : -1) * dt / 350, 0, 1);
-    cat.update(dt, clock, crew.layout.main, [...crew.layout.blocks.values()]);
+    if(preferences.ambience&&preferences.motion)cat.update(dt, clock, crew.layout.main, [...crew.layout.blocks.values()]);
     // camera
     if (clock - insetCheck > 1000) {
       insetCheck = clock;
@@ -547,7 +573,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     asciiMs = asciiMs * 0.9 + (performance.now() - ta) * 0.1;
     if (tp < 1) glitch(tp);
     redPulse();
-    labelBoxes = drawLabels(g, crew, cam, { dpr, now: clock, ascii: asciiAmt > 0.5, tv: plan.tv });
+    labelBoxes = drawLabels(g, crew, cam, { dpr, now: clock, ascii: asciiAmt > 0.5, tv: plan.tv, plan:boardSummary });
     letterbox();
     if (crtOn) crt.apply(g, canvas, dpr, clock);
     drawMs = drawMs * 0.9 + (performance.now() - t0) * 0.1;
@@ -722,7 +748,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
       const id = pickAt(p.x, p.y);
       if (id !== crew.hovered) hoverCb?.(id);
       crew.hovered = id;
-      canvas.style.cursor = id ? "pointer" : "grab";
+      canvas.style.cursor = id || boardAt(p.x,p.y) ? "pointer" : "grab";
       return;
     }
     pointers.set(e.pointerId, p);
@@ -757,8 +783,8 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
           lastTap = null;
         } else {
           const id = pickAt(p.x, p.y);
-          crew.selected = id;
-          selectCb?.(id);
+          if(boardAt(p.x,p.y))boardCb?.();
+          else {crew.selected = id;selectCb?.(id);}
           lastTap = { x: p.x, y: p.y, t };
         }
       }
@@ -787,10 +813,12 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
   const scene: OfficeSceneExtras = {
     canvas,
     load(snapshot: Snapshot) {
+      meetings=snapshot.meetings??[];
       crew.load(snapshot);
       if (crew.selected && !crew.workers.has(crew.selected)) crew.selected = null;
     },
     apply(event: OfficeEvent) {
+      if(event.meetings)meetings=event.meetings;
       const was = event.replaces;
       crew.apply(event);
       // a hired worker renamed to its real session: the camera keeps following it
@@ -807,12 +835,22 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     getMode() {
       return mode;
     },
+    setFloor(code,reset=false){floorCode=code;if(reset){cam.reset();crew.selected=null;crew.hovered=null;cut=null;}},
+    setConnection(state){crew.setConnection(state);},
+    setAppearance(p){
+      const next=cleanView(p),repaint=next.theme!==preferences.theme||next.decor!==preferences.decor;
+      preferences=next;crew.setAppearance(next);if(repaint)rebuild();
+      if(!next.motion){cut=null;shake=0;hitstop=0;}
+    },
     setCrt(on: boolean) {
       crtOn = !!on;
     },
     setDirector(on: boolean) {
       director = !!on;
     },
+    setMeetingSelection(key){meetingKey=key;},
+    setWhiteboard(summary){boardSummary=summary;},
+    onWhiteboard(cb){boardCb=cb;},
     onSelect(cb) {
       selectCb = cb;
     },

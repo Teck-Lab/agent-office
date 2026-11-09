@@ -107,7 +107,7 @@ function outbox(home) {
 
 const text = (r) => r.result.content.map((c) => c.text).join("\n");
 
-test("legacy handshake negotiates the version and lists five tools", async () => {
+test("legacy handshake negotiates the version and lists the Office tools", async () => {
   const { home, proj } = fakeHome();
   const s = session({ home, cwd: proj });
   const init = await s.request(1, "initialize", legacyInit());
@@ -117,7 +117,7 @@ test("legacy handshake negotiates the version and lists five tools", async () =>
   assert.ok(init.result.instructions.includes("office_peers"));
   s.send({ jsonrpc: "2.0", method: "notifications/initialized" });
   const list = await s.request(2, "tools/list");
-  assert.deepEqual(list.result.tools.map((t) => t.name), ["office_status", "office_peers", "office_shout", "office_celebrate", "office_flip"]);
+  assert.deepEqual(list.result.tools.map((t) => t.name), ["office_meeting", "office_status", "office_peers", "office_shout", "office_celebrate", "office_flip"]);
   for (const t of list.result.tools) {
     assert.equal(t.inputSchema.type, "object");
     assert.ok(t.description.length > 80, `${t.name} has a real description`);
@@ -155,7 +155,7 @@ test("modern requests: server/discover, _meta validation, resultType and serverI
 
   const list = await s.request("l", "tools/list", { _meta: meta });
   assert.equal(list.result.resultType, "complete");
-  assert.equal(list.result.tools.length, 5);
+  assert.equal(list.result.tools.length, 6);
 
   const call = await s.request("c", "tools/call", { name: "office_status", arguments: { text: "Wiring the webhook", mood: "🪝" }, _meta: meta });
   assert.equal(call.result.resultType, "complete");

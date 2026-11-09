@@ -4,6 +4,7 @@
  */
 import css from "./ui/styles.css";
 import { createOfficeScene } from "./scene/index.ts";
+import {mountFloors} from "./ui/floors.ts";
 import { mountChrome } from "./ui/app.ts";
 import { connect } from "./ui/connection.ts";
 import { eventsUrl, redeemUnlock } from "./ui/control/token.ts";
@@ -21,7 +22,8 @@ function mountPoint(id: string): HTMLElement {
 
 adoptCss(css);
 const scene = createOfficeScene(mountPoint("office"));
-const chrome = mountChrome(mountPoint("chrome"), scene);
+const chromeRoot=mountPoint("chrome");
+const chrome = mountFloors(chromeRoot,scene,mountChrome(chromeRoot, scene));
 
 // Fresh from /unlock: the token first, so the very first snapshot already says "enabled". An
 // unlocked browser asks for the control plane alongside /events rather than after its snapshot.

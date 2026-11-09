@@ -19,6 +19,7 @@
   --fg-3: #75757b;
   --fg-4: #4c4c53;
 
+  --omp: #38bdf8;
   --claude: #d97757;
   --cc: #f2f2f2;
   --codex: #10a37f;
@@ -175,6 +176,7 @@ button {
   height: 100%;
 }
 
+.logo-omp { color: var(--omp); }
 .logo-claude { color: var(--claude); }
 .logo-commandcode { color: var(--cc); }
 .logo-codex { color: var(--codex); }
@@ -3672,3 +3674,37 @@ body.stream .sl { opacity: 0 !important; pointer-events: none !important; }
 @media (max-width: 420px) {
   .set-tab svg { display: none; }
 }
+
+
+/* A physical plan board in the room opens this accessible, read-only sheet. */
+.whiteboard-tab{position:fixed;left:20px;bottom:24px;z-index:35;display:flex;align-items:center;gap:9px;padding:11px 15px;color:#f4f1df;background:#263c39;border:2px solid #829582;box-shadow:3px 3px 0 #111b1a;font:600 12px var(--font-mono,monospace);cursor:pointer;pointer-events:auto}
+.whiteboard-tab:hover{background:#334e47}.wb-tab-icon{font-size:21px;line-height:14px;color:#f5e9b7}
+.whiteboard-dialog{box-sizing:border-box;width:min(680px,calc(100vw - 28px));max-height:calc(100dvh - 56px);padding:0;border:3px solid #899987;border-radius:3px;color:#283c36;background:#efeee0;box-shadow:7px 7px 0 #10201bd9;overflow:auto;pointer-events:auto;font:14px/1.55 system-ui,sans-serif}
+.whiteboard-dialog::backdrop{background:#060d13b8;backdrop-filter:blur(3px)}
+.wb-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px 15px;border-bottom:1px solid #bdc6b5}.wb-header h2{margin:1px 0 0;font-size:24px;font-weight:750;letter-spacing:-.6px}
+.wb-kicker{font:700 10px/1.5 monospace;letter-spacing:1.4px;color:#5a7561}.wb-close{padding:7px 12px;border:1px solid #9eae98;border-radius:3px;background:#f7f7ec;color:#314f40;cursor:pointer}.whiteboard-dialog select{box-sizing:border-box;margin:16px 24px 0;max-width:calc(100% - 48px);padding:8px 10px;color:#283c36;background:#f9f9ef;border:1px solid #9eae98}
+.wb-body{padding:18px 24px 24px}.wb-owner{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px;color:#5a6e60}.wb-owner code,.wb-assignment code{font-size:10px;overflow-wrap:anywhere}.whiteboard-dialog a{color:#22604e;font-weight:700;text-decoration:underline}.wb-goal{margin:20px 0 16px;padding:15px 17px;background:#fbf8df;border-left:4px solid #d3b45a;box-shadow:1px 2px 0 #cdd0b6}.wb-goal h3{margin:5px 0 8px;font-size:18px;line-height:1.4;overflow-wrap:anywhere}.wb-state{font:600 11px monospace;text-transform:uppercase;color:#617859}
+.wb-progress{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}.wb-progress strong{font-size:19px}.wb-progress progress{width:100%;height:7px;accent-color:#4f8065;margin:2px 0 7px}.wb-phase>h3,.wb-assignments>h3{margin:20px 0 9px;font-size:13px;letter-spacing:.4px}.wb-tasks{list-style:none;margin:0;padding:0}.wb-task{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #d4d8c7}.wb-check{flex:0 0 19px;font:700 15px monospace;color:#7b8e78}.wb-task>div{min-width:0;overflow-wrap:anywhere}.wb-task small{display:block;font:10px monospace;color:#798471;margin-top:2px}.wb-task.is-completed .wb-check{color:#347356}.wb-task.is-completed>div>span{text-decoration:line-through;color:#78836e}.wb-task.is-in_progress{background:#dce8d4;padding-inline:8px;border-left:3px solid #628765}.wb-task.is-blocked .wb-check,.wb-blocker{color:#9c4c30}.wb-blocker{margin:5px 0 0;font-size:12px}.wb-note,.wb-empty{font-size:12px;color:#78816e}.wb-empty{padding:8px 0}.wb-assignment{padding:12px;margin:8px 0;background:#e1e6d8;border:1px solid #c5ceba;border-radius:3px}.wb-assignment>div{display:flex;justify-content:space-between;gap:10px}.wb-assignment strong{font-size:12px}.wb-assignment p{margin:4px 0;font-size:11px;color:#62745e}.wb-assignments{margin-top:22px;border-top:1px solid #bec8b3}.whiteboard-dialog :focus-visible,.whiteboard-tab:focus-visible{outline:3px solid #55b395;outline-offset:3px}
+body.stream .whiteboard-tab{display:none}@media(max-width:640px){.whiteboard-tab{left:12px;bottom:80px;padding:9px 12px}.wb-header{padding:16px}.wb-body{padding:16px}.whiteboard-dialog{max-height:calc(100dvh - 28px)}}
+
+.wb-meeting{padding:14px;border:1px solid #557879;border-radius:8px;background:#173037;margin-bottom:16px}.wb-meeting h3{margin:0 0 10px}.wb-attendee{display:block;font-size:11px;overflow-wrap:anywhere;padding:4px 0}.wb-decision{border-left:3px solid #91bc8b;padding-left:10px}
+
+.appearance-tab{position:fixed;left:14px;bottom:74px;z-index:25;padding:8px 12px;border:1px solid #596174;border-radius:7px;background:#171c2a;color:#dbeafe;font:inherit;cursor:pointer}
+.appearance-dialog{width:min(440px,calc(100vw - 24px));max-height:85vh;overflow:auto;border:1px solid #596174;border-radius:12px;background:#171c2a;color:#e2e8f0;padding:22px;box-shadow:0 20px 80px #0009}
+.appearance-dialog::backdrop{background:#05081599}.appearance-dialog h2{font-size:20px;margin:0 0 10px}.appearance-dialog p{font-size:13px;line-height:1.5;color:#afbed0}.appearance-options{display:grid;gap:12px;margin:20px 0}
+.appearance-options label{display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:13px}.appearance-options select{max-width:55%;padding:6px;border:1px solid #596174;border-radius:5px;background:#222b3b;color:#e2e8f0;font:inherit}.appearance-options input{accent-color:#38bdf8}
+.appearance-actions{display:flex;justify-content:space-between;gap:12px}.appearance-actions button{border:1px solid #596174;background:#24354d;color:#e2e8f0;border-radius:6px;padding:8px 12px;cursor:pointer}.appearance-tab:focus-visible,.appearance-dialog :focus-visible{outline:2px solid #7dd3fc;outline-offset:3px}
+body.stream .appearance-tab{display:none}.office-hover{position:fixed;left:14px;top:84px;z-index:24;max-width:min(340px,calc(100vw - 28px));background:#111827f5;color:#e2e8f0;border:1px solid #465871;border-radius:8px;padding:12px;pointer-events:none;font-size:12px;line-height:1.5;white-space:pre-wrap}.office-hover[hidden]{display:none}
+
+@media(max-width:640px){.appearance-tab{left:12px;bottom:132px}.office-hover{top:112px;max-width:calc(100vw - 28px)}}
+body.stream .office-hover{display:none}
+
+.appearance-tab,.appearance-dialog{pointer-events:auto}
+
+
+/* Read-only project / Run floors; helpers travel with their owning session. */
+.floor-picker{position:fixed;left:14px;top:84px;z-index:25;box-sizing:border-box;width:min(360px,calc(100vw - 28px));padding:9px 10px;border:1px solid #52657b;border-radius:9px;background:#152132f2;box-shadow:0 5px 18px #0004;color:#e2e8f0;pointer-events:auto}
+.floor-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font:700 10px/1.3 monospace;letter-spacing:1px;color:#9fc5d6}.floor-summary{font:11px/1.3 system-ui,sans-serif;letter-spacing:0;color:#b9c8d9}
+.floor-controls{display:flex;gap:5px}.floor-controls select{min-width:0;flex:1;padding:6px 7px;border:1px solid #4c6078;border-radius:5px;background:#213148;color:#edf3f7;font:12px system-ui,sans-serif;text-overflow:ellipsis}.floor-controls button{width:30px;flex:0 0 30px;border:1px solid #4c6078;border-radius:5px;background:#263c53;color:#d4ebfa;cursor:pointer}.floor-controls button:disabled{opacity:.35;cursor:default}.floor-picker :focus-visible{outline:2px solid #7dd3fc;outline-offset:2px}
+.office-hover{top:164px}body.stream .floor-picker{display:none}
+@media(max-width:640px){.floor-picker{left:12px;top:112px;width:calc(100vw - 24px)}.floor-controls select{font-size:16px}.office-hover{top:198px}}

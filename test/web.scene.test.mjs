@@ -273,6 +273,21 @@ test("OfficeEvent.replaces moves a worker, its history and its interns to the ne
   assert.equal(m.workers.size, 2);
 });
 
+test("cumulative own usage updates inspector totals without changing pose, duplicating helpers or history",()=>{
+  const model=new OfficeModel();model.load({version:1,startedAt:'',demo:false,workers:[],recent:[]});
+  let seq=0;const emit=(workerId,kind,extra={})=>model.apply({seq:++seq,ts:new Date().toISOString(),agent:'omp',project:'test',workerId,kind,...extra});
+  emit('main','session_start');emit('main','waiting');emit('helper','subagent_start',{parentId:'main'});
+  const history=model.get('main').history.length;
+  emit('main','usage',{tokenTotal:20_000_000});emit('main','usage',{tokenTotal:20_000_000});emit('helper','usage',{parentId:'main',tokenTotal:350});
+  emit('main','usage',{tokenTotal:19_000_000});
+  assert.equal(model.get('main').tokens,20_000_000);assert.equal(model.get('main').status,'waiting');assert.equal(model.get('main').history.length,history);
+  assert.equal(model.get('helper').tokens,350);assert.equal(model.tokens,20_000_350);assert.equal(model.toolCalls,0);
+  emit('main','usage',{tokens:7});assert.equal(model.tokens,20_000_357);
+  assert.equal(model.get('main').tokens,20_000_007);
+  emit('main','session_end');emit('main','session_start');emit('main','usage',{tokenTotal:20_000_007});
+  assert.equal(model.get('main').tokens,20_000_007);assert.equal(model.tokens,20_000_357,'a resumed worker restores its own counter without adding the whole session again');
+});
+
 test("control store: sessions arrive by event and are found by their (renamed) worker", () => {
   const store = new ControlStore();
   store.state = "enabled";
@@ -444,4 +459,14 @@ test("idle native descendants inherit a late Run and lose revoked ownership in l
   assert.equal(crew.workers.get("native").seat.block.zone,"cloud");
   crew.apply(event("deep",{kind:"subagent_start",parentId:"native"}));crew.apply(event("main",{kind:"session_end"}));
   assert.equal(crew.workers.get("deep").leaving,true);
+});
+
+
+test('a reusable OMP helper cancels its departure when a new turn starts before the animation ends',()=>{
+  let clock=0;const crew=new Crew(()=>clock),host={kind:'docker-sandbox',id:'reuse',name:'Sandbox'};
+  const base={seq:1,ts:new Date().toISOString(),agent:'omp',project:'Repo',host,placement:'cloud'};
+  crew.apply({...base,kind:'session_start',workerId:'main'});crew.apply({...base,kind:'subagent_start',workerId:'helper',parentId:'main'});
+  const first=crew.workers.get('helper');crew.apply({...base,kind:'subagent_end',workerId:'helper',parentId:'main'});assert.equal(first.leaving,true);
+  clock=100;crew.apply({...base,kind:'subagent_start',workerId:'helper',parentId:'main'});crew.apply({...base,kind:'thinking',workerId:'helper',parentId:'main'});
+  assert.equal(crew.workers.get('helper'),first);assert.equal(first.leaving,false);assert.equal(first.gone,false);assert.equal(first.parentId,'main');assert.equal(crew.workers.size,2);
 });

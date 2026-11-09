@@ -402,6 +402,41 @@ export function chair(g: G, cx: number, cy: number, key: ArtKey, empty: boolean)
   r(g, cx - 7, by + 1, 1, 4, dk(main, 0.6)); r(g, cx + 6, by + 1, 1, 4, dk(main, 0.6));
 }
 
+/** Front-facing office chair: upright back, visible cushion and wheels below. */
+export function chairFront(g: G, cx: number, cy: number, key: ArtKey, empty: boolean) {
+  const [main, acc] = art(key).chair;
+  const edge = dk(main, 0.6);
+  // Keep the same ground plane and lighting as the rear-view office chair.
+  r(g, cx - 1, cy - 1, 2, 4, C.slate2);
+  r(g, cx - 5, cy + 2, 10, 1, C.slate2);
+  r(g, cx - 5, cy + 3, 1, 1, C.ink2); r(g, cx + 4, cy + 3, 1, 1, C.ink2); r(g, cx, cy + 3, 1, 1, C.ink2);
+  // The backrest rises behind the sitter; it is not a rotated rear-view sprite.
+  r(g, cx - 5, cy - 15, 10, 9, edge);
+  r(g, cx - 6, cy - 14, 12, 7, edge);
+  r(g, cx - 5, cy - 14, 10, 7, main);
+  r(g, cx - 4, cy - 14, 8, 1, lt(main, 0.2));
+  r(g, cx - 4, cy - 13, 8, 1, acc);
+  r(g, cx - 4, cy - 8, 8, 1, dk(main, 0.4));
+  // Seat projects toward the table, with an upholstered front lip.
+  r(g, cx - 5, cy - 5, 10, 5, edge);
+  if (empty) r(g, cx - 4, cy - 5, 8, 3, mix(main, C.slate3, 0.25));
+  r(g, cx - 4, cy - 2, 8, 1, main);
+  r(g, cx - 4, cy - 1, 8, 1, dk(main, 0.4));
+  // Upright arm supports and highlighted arm pads.
+  r(g, cx - 6, cy - 5, 1, 5, C.slate2); r(g, cx + 5, cy - 5, 1, 5, C.slate2);
+  r(g, cx - 7, cy - 6, 3, 2, edge); r(g, cx + 4, cy - 6, 3, 2, edge);
+  r(g, cx - 7, cy - 6, 3, 1, C.slate3); r(g, cx + 4, cy - 6, 3, 1, C.slate3);
+}
+
+/** Side-facing seat with upright legs and back, rather than rotated furniture. */
+export function chairSide(g:G,cx:number,cy:number,key:ArtKey,empty:boolean,dir:'left'|'right'){
+ const [main,acc]=art(key).chair,back=cx+(dir==='right'?-6:3);
+ r(g,cx-1,cy-2,2,5,C.slate2);r(g,cx-5,cy+2,10,1,C.slate2);
+ r(g,cx-5,cy+3,1,1,C.ink2);r(g,cx+4,cy+3,1,1,C.ink2);
+ r(g,back,cy-13,3,12,dk(main,.4));r(g,back,cy-13,3,1,acc);
+ r(g,cx-5,cy-4,10,3,main);if(empty)r(g,cx-4,cy-4,8,1,lt(main,.2));
+ r(g,cx-3,cy-7,6,1,C.slate3);
+}
 export function stool(g: G, cx: number, cy: number, key: ArtKey) {
   const seat = art(key).stool;
   r(g, cx - 1, cy - 2, 2, 4, C.slate2);
@@ -1148,4 +1183,8 @@ export function rackRow(g: G, x: number, y: number, w: number, t: number, seed: 
     }
     r(g, cx + CW - 5, top + h - 3, 2, 1, C.cyan3);
   }
+}
+
+export function coffeeSteam(g:G,x:number,y:number,t:number){
+ for(let i=0;i<3;i++){const age=(t/180+i*4)%14;g.fillStyle=rgba(C.white,(1-age/14)*.35);g.fillRect(Math.round(x+14+Math.sin(age/3+i)*2),Math.round(y-12-age),1,2);}
 }

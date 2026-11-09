@@ -67,6 +67,7 @@ export interface McpServerOptions {
   cooldown?: Cooldown;
   findOffice?: () => Promise<number | null>;
   fetchSnapshot?: ToolContext["fetchSnapshot"];
+  meeting?: ToolContext["meeting"];
   /** Write one serialized message (no newline). */
   send: (line: string) => void;
   log?: (msg: string) => void;
@@ -136,6 +137,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
 
   const handlers = createHandlers({
     outbox,
+    meeting: opts.meeting,
     cooldown,
     now,
     cwd,

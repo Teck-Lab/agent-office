@@ -19,7 +19,9 @@
  * minute, so a last transcript line read after its process exited doesn't
  * walk it back in.
  */
+import { cleanPlan } from '../shared/plan.ts';
 import { homedir } from "node:os";
+import {Meetings,cleanMeeting} from "../shared/meetings.ts";
 import { foldPrivate } from "../ingest/presence.ts";
 import {
   cleanOrchestration, nativeFamilyIds,
@@ -44,9 +46,9 @@ export const INTERN_GRACE_MS = 6_000;
 const AGENTS = new Set<AgentKind>(["omp", "claude", "commandcode", "codex", "opencode", "droid", "gemini", "qwen", "cursor"]);
 const HOSTS = new Set<HostKind>(["docker-sandbox", "local", "ssh", "daytona", "boat", "railway", "vercel"]);
 const KINDS = new Set<EventKind>([
-  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "waiting",
+  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "plan", "usage", "waiting",
   "test_fail", "test_pass", "error", "subagent_start", "subagent_end", "idle", "session_end",
-  "status", "shout", "celebrate", "flip",
+  "status", "shout", "celebrate", "flip", "meeting",
 ]);
 /** Sent by the agent itself (MCP): only for workers already in the office, and they leave the pose alone. */
 const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "flip"]);
@@ -98,6 +100,8 @@ interface Worker {
 }
 
 export class OfficeState {
+  private hostStates = new Map<string, import("../shared/events.ts").HostStatus>();
+  private readonly meetings = new Meetings();
   readonly demo: boolean;
   readonly startedAt: string;
   private readonly now: () => number;
@@ -143,6 +147,11 @@ export class OfficeState {
     }
     let w = this.workers.get(e.workerId);
 
+    if(e.kind === "meeting"){
+      if(!w || w.removeAt !== undefined || w.state.parentId || w.state.nativeKind!=="main" || e.nativeKind!=="main" || !e.host || !e.meeting)return null;
+      if(!this.meetings.apply(e.host.id,e.workerId,e.meeting,e.ts))return null;
+      return this.publish({...e,meetings:this.meetings.snapshot()});
+    }
     if (!w) {
       if (ENDINGS.has(e.kind) || SIGNALS.has(e.kind)) return null;
       const from = e.parentId || isPlaceholder(e.workerId) ? undefined : e.replaces ?? this.claim(e);
@@ -172,7 +181,7 @@ export class OfficeState {
     }
 
     if (e.kind === "session_end") return this.remove(w, e);
-    if (!e.parentId && e.kind !== "idle") w.heldWait = undefined;
+    if (!e.parentId && e.kind !== "idle" && e.kind !== "usage" && e.kind !== "plan") w.heldWait = undefined;
     if (!e.parentId && e.kind === "waiting" && this.busyInterns(w, now)) e = this.supervise(w, e.ts, now);
     this.fold(w, e, now);
     const out = this.publish(e);
@@ -363,13 +372,24 @@ export class OfficeState {
     for (const id of ids) { const w = this.workers.get(id); if (w && w.removeAt === undefined) w.lastActive = this.now(); }
   }
 
+  /** Observer health is independent of worker execution; callers supply authenticated host identity. */
+  connection(host: import('../shared/events.ts').Host, online: boolean): void {
+    if (this.hostStates.get(host.id)?.online === online) return;
+    if (!this.hostStates.has(host.id) && this.hostStates.size >= 1024) this.hostStates.delete(this.hostStates.keys().next().value!);
+    const hostStatus: import('../shared/events.ts').HostStatus = {host,online,status:online?'online':'offline',...(!online?{error:'Observer heartbeat timed out'}:{})};
+    this.hostStates.set(host.id,hostStatus);
+    this.publish({kind:'host_status',ts:new Date(this.now()).toISOString(),agent:'omp',workerId:'host:'+host.id,project:host.name,host,hostStatus});
+  }
+
   snapshot(): Snapshot {
     return {
       version: 1,
       startedAt: this.startedAt,
       demo: this.demo,
-      workers: [...this.workers.values()].map((w) => ({ ...w.state })),
+      workers: [...this.workers.values()].filter(w=>w.removeAt===undefined).map((w) => ({ ...w.state })),
+      meetings: this.meetings.snapshot(),
       recent: this.recent(),
+      ...(this.hostStates.size?{hosts:[...this.hostStates.values()]}:{}),
     };
   }
 
@@ -385,6 +405,8 @@ export class OfficeState {
   /** Empty the office (the demo starting over for a new viewer). Sequence numbers keep counting. */
   reset(): void {
     this.workers.clear();
+    this.hostStates.clear();
+    this.meetings.clear();
     this.ring.fill(undefined);
     this.ringHead = this.ringSize = 0;
   }
@@ -423,7 +445,7 @@ export class OfficeState {
         workerId: e.workerId,
         agent: e.agent,
         project: e.project,
-        status: e.kind,
+        status: e.kind === "plan" ? "idle" : e.kind === "usage" ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
         tokens: 0,
@@ -447,6 +469,7 @@ export class OfficeState {
 
   private merge(w: Worker, e: RawEvent): void {
     const s = w.state;
+    if(e.nativeKind && !s.nativeKind)s.nativeKind=e.nativeKind;
     if (e.host) s.host = e.host;
     if (e.placement) s.placement = e.placement;
     if (e.orchestration !== undefined) {
@@ -459,12 +482,16 @@ export class OfficeState {
     if (e.project) s.project = e.project;
     if (e.cwd) s.cwd = e.cwd;
     if (e.model) s.model = e.model;
+    if (e.plan !== undefined) s.plan = e.plan;
     if (e.role) s.role = e.role;
   }
 
   private fold(w: Worker, e: RawEvent, now: number): void {
     const s = w.state;
     this.merge(w, e);
+    if (e.tokenTotal !== undefined) s.tokens = Math.max(s.tokens, e.tokenTotal);
+    else if (e.tokens) s.tokens += e.tokens;
+    if (e.kind === "usage" || e.kind === "plan") { this.touch(w, e.ts, now); return; }
     s.status = e.kind;
     s.lastTs = e.ts;
     if (e.kind === "tool_start") {
@@ -487,7 +514,6 @@ export class OfficeState {
       s.summary = e.summary;
     }
     for (const k of ["tool", "category", "summary"] as const) if (s[k] === undefined) delete s[k];
-    if (e.tokens) s.tokens += e.tokens;
     if (e.kind === "subagent_end") w.removeAt = now + this.graceMs;
     else w.removeAt = undefined;
     if (e.kind !== "idle") this.touch(w, e.ts, now);
@@ -508,6 +534,8 @@ export class OfficeState {
       if (child.removeAt === undefined) this.publish({ ...this.base(child, e.ts), kind: "subagent_end" });
     }
     this.workers.delete(id);
+    this.meetings.remove(id);
+    e.meetings=this.meetings.snapshot();
     w.state.status = e.kind;
     w.state.lastTs = e.ts;
     return this.publish(e);
@@ -519,6 +547,7 @@ export class OfficeState {
     if (s.host) b.host = s.host;
     if (s.placement) b.placement = s.placement;
     if (s.orchestration !== undefined) b.orchestration = s.orchestration;
+    if (s.plan !== undefined) b.plan = s.plan;
     if (s.parentId) b.parentId = s.parentId;
     if (s.cwd) b.cwd = s.cwd;
     if (s.model) b.model = s.model;
@@ -564,6 +593,9 @@ export class OfficeState {
       e.orchestration = cleanOrchestration(raw.orchestration);
       e.placement = e.orchestration?.role === "coordinator" ? "office" : "cloud";
     }
+    if (raw.plan !== undefined) e.plan = cleanPlan(raw.plan);
+    if(raw.nativeKind === "main" || raw.nativeKind === "sub")e.nativeKind=raw.nativeKind;
+    if(raw.kind === "meeting"){const command=cleanMeeting(raw.meeting);if(!command)return null;e.meeting=command;}
     const parentId = clean(raw.parentId, ID_MAX);
     if (parentId && parentId !== workerId) e.parentId = parentId;
     // Remote paths are shown as they are: "~" would be this machine's home.
@@ -580,6 +612,7 @@ export class OfficeState {
     if (typeof raw.tokens === "number" && Number.isFinite(raw.tokens) && raw.tokens > 0) {
       e.tokens = Math.min(Math.round(raw.tokens), 10_000_000);
     }
+    if (Number.isSafeInteger(raw.tokenTotal) && raw.tokenTotal! >= 0) e.tokenTotal = raw.tokenTotal;
     const role = clean(raw.role, 48);
     if (role) e.role = role;
     if (raw.kind === "session_start") {
