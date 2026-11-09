@@ -207,27 +207,26 @@ pauses the new water animation and traffic. These decorative figures are never
 added to the agent model, counters or orchestration.
 
 
-## Read-only project and Run floors
+## Read-only project floors
 
-The Floors selector offers All floors, a floor per project/execution-host pair,
-and a floor per Orca Run within that scope. Previous/next buttons and the existing
-elevator indicator show the selected floor. Selection is remembered in this
-browser. Empty selected floors remain available rather than changing teams.
+Each project/repository has one floor, combining all its Orca Runs, coordinators,
+workers and native helpers across execution hosts. Runs and hosts do not create
+additional floors. Overview is an aggregate view of all projects. Coordinators
+remain in the office and dispatched sessions in the sandbox cloud on that floor.
 
-The global stream continues updating hidden floors. Only the selected scope is
-presented to the scene, feed, whiteboard, meetings and counters. Native helpers
-follow their root parent, including late parent discovery and nested helpers.
-Equal Run or project names across different hosts are not ownership matches.
-Coordinators remain in the office and dispatched sessions in the sandbox cloud.
-Meetings are filtered for display without changing actual membership.
+Project identity uses the project label supplied by the observer. Distinct repos
+must have distinct labels; the current event contract has no canonical repo ID.
+Native descendants follow their root session, including late parent discovery.
+Existing host-specific project and Run selections migrate to their project floor.
 
-Ordinary updates remain incremental. Existing actors changing scope trigger a
-scoped snapshot; switching floors does not replay old handoffs or completion
-effects. Disconnection remains visible after a floor change. The selector resets
-the camera and clears the previous worker selection, without dispatching work or
-modifying agent, worktree or sandbox lifecycles.
+The global stream continues updating hidden projects. Scene, feed, whiteboard,
+meetings and counters follow the selected project. Host health follows the hosts
+observed for that project and remains visible if its selected floor becomes empty.
+Changing a Run within a project does not move the family to another floor.
+Switching floors clears selection and resets the camera without controlling agents,
+worktrees or sandboxes. Disconnected views remain disconnected after switching.
 
-Validation: full isolated Linux suite 573 passed, 2 skipped; focused suite 91
-passed; 12 floor checks repeated after the final accessibility refinement.
-Typecheck, production build and live snapshot grouping passed. No visual browser
-inspection was performed.
+Validation: 92 focused tests passed, including 13 floor tests for cross-host/Run
+grouping, saved-selection migration, native families, hidden activity, meetings,
+offline hosts, reconnect/replay and safe DOM text. Typecheck and production build
+passed. No visual browser inspection was performed. Refresh an open Office page.
