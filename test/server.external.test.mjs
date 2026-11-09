@@ -249,3 +249,23 @@ test('separate meetings do not auto-invite other Runs and an owner ending a meet
  const replay=event('meeting','b',{nativeKind:'main',meeting:{action:'update',id:'second',decision:'password=private-value'}});
  await send({events:[replay]});const first=state.snapshot().meetings;await send({events:[replay]});assert.deepEqual(state.snapshot().meetings,first);assert.ok(!JSON.stringify(first).includes('private-value'));
 });
+
+
+test('quiet observer heartbeats keep the source online without inventing worker activity',async t=>{
+ const o=await timedOffice(t);await o.send([event('session_start'),event('waiting')]);const before=o.state.snapshot().workers[0];
+ for(let i=0;i<4;i++){o.advance(30000);await o.send([],['main']);o.tick();}
+ const snap=o.state.snapshot();assert.equal(snap.hosts[0].online,true);assert.equal(snap.workers.length,1);assert.equal(snap.workers[0].status,before.status);assert.equal(snap.workers[0].toolCalls,0);
+ assert.equal(snap.recent.filter(e=>e.kind==='host_status').length,1,'no status spam on each heartbeat');
+ o.advance(60001);o.tick();let lost=o.state.snapshot();assert.equal(lost.hosts[0].online,false);assert.equal(lost.hosts[0].error,'Observer heartbeat timed out');
+ o.tick();assert.equal(o.state.recent().filter(e=>e.kind==='host_status'&&!e.hostStatus.online).length,1);
+ await o.send([]);assert.equal(o.state.snapshot().hosts[0].online,true);assert.equal(o.state.snapshot().workers.length,0,'reconnection alone never fabricates an agent');
+});
+test('untrusted packets cannot forge host health; snapshots scope observer status to their source',async t=>{
+ const {state,send}=await office(t);
+ assert.equal((await send({events:[event('host_status','main',{hostStatus:{host:{...source.host,id:'victim'},online:false,status:'offline'}})]})).status,400);
+ assert.equal(state.snapshot().hosts,undefined);assert.equal(state.size,0);
+ state.connection({kind:'docker-sandbox',id:'other',name:'Other'},false);
+ const response=await send({events:[],wantSnapshot:true});const snap=JSON.parse(response.body).snapshot;
+ assert.deepEqual(snap.hosts.map(h=>h.host.id),[sourceId]);assert.equal(snap.workers.length,0);assert.equal(state.size,0);
+ state.reset();assert.equal(state.snapshot().hosts,undefined);
+});

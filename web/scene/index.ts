@@ -348,7 +348,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     const pan = (cam.x - (room.x + room.w / 2)) * 1;
     const rain = weather ? weather === 'rain' : preferences.weather==='date'?rainyToday():preferences.weather==='rain';
     // ASCII keeps its windows empty: a sampled skyline is just noise
-    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, preferences.motion?now:0, pan, rain&&preferences.motion);
+    if (!asciiPass) sky.draw(wg, plan.windows, room, WIN_TOP, WIN_H, st, preferences.motion?now:0, pan, rain&&preferences.motion,preferences.season);
     if (asciiPass) {
       // only the outline plan: the ground stays blank in ASCII
       wg.drawImage(staticAscii!.c, origin.x, origin.y);
@@ -408,7 +408,9 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     }
     over.sort((a, b) => a.y - b.y);
     for (const c of over) c.fn(wg);
-    if(preferences.motion)crew.fx.draw(wg, now);
+    if(preferences.motion&&crew.liveFeed)crew.fx.draw(wg, now);
+    crew.handoffs.draw(wg,crew.workers,now,preferences.motion&&preferences.handoffs&&crew.liveFeed,w=>crew.unavailable(w));
+    if(!crew.liveFeed){const warning=textBitmap(FONT(),'LIVE FEED DISCONNECTED - LAST KNOWN STATE','#f2c879');wg.fillStyle='#171927';wg.fillRect(plan.meeting.x,room.y+room.h-16,warning.w+12,14);wg.drawImage(warning.c,plan.meeting.x+6,room.y+room.h-13);}
     return st;
   }
 
@@ -830,6 +832,7 @@ export function create(mount: HTMLElement): OfficeSceneExtras {
     getMode() {
       return mode;
     },
+    setConnection(state){crew.setConnection(state);},
     setAppearance(p){
       const next=cleanView(p),repaint=next.theme!==preferences.theme||next.decor!==preferences.decor;
       preferences=next;crew.setAppearance(next);if(repaint)rebuild();

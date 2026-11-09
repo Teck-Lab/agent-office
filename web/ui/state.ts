@@ -107,6 +107,10 @@ export class OfficeModel {
 
   apply(e: OfficeEvent): Change {
     const change: Change = {};
+    if(e.kind==='host_status'){
+      if(e.hostStatus){const {host,online}=e.hostStatus;this.hostsSeen.set(host.id,host);if(online)this.offline.delete(host.id);else this.offline.add(host.id);change.hosts=true;}
+      return change;
+    }
     if (isRemote(e.host)) {
       const known = this.hostsSeen.has(e.host.id);
       this.hostsSeen.set(e.host.id, e.host);
@@ -115,7 +119,7 @@ export class OfficeModel {
         this.offline.add(e.host.id);
         // the notice is about the host, not a worker
         if (!this.workers.has(e.workerId)) return change;
-      } else if (this.offline.delete(e.host.id) || !known) change.hosts = true;
+      } else if (!this.offline.has(e.host.id) || !["session_end","subagent_end","idle"].includes(e.kind)) {if (this.offline.delete(e.host.id) || !known) change.hosts = true;}
     }
     if (e.kind === "session_start" && e.replaces && e.replaces !== e.workerId) {
       const old = this.workers.get(e.replaces);

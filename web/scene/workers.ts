@@ -1,3 +1,4 @@
+import {Handoffs,drawPersonalDesk} from './office-details.ts';
 /*
  * The crew: one Worker per session or subagent, plus the stations they sit
  * at. Events become behaviour here: walking in from the elevator (or beaming
@@ -145,12 +146,16 @@ const OFFLINE = /^remote offline/i;
 export interface DrawCall { y: number; fn: (g: CanvasRenderingContext2D) => void }
 
 export class Crew {
+  liveFeed=true;
+  readonly handoffs=new Handoffs();
+  unavailable(w:Worker){return !this.liveFeed||!!(w.host&&this.offline.has(w.host.id));}
+  setConnection(state:string){if(state!=='live'){this.liveFeed=false;this.handoffs.clear();this.fx.ps=[];this.fx.planes=[];}}
   preferences:ViewPreferences={...DEFAULT_VIEW};
   private completed=new Set<string>();
   private pendingCheers=new Set<string>();
   private visits=new Map<string,{kind:'meeting'|'return';target:{x:number;y:number;dir:Dir}}>();
   private meetingDoor={x:8,y:144};
-  activityState(w:Worker){return visualState(w,this.workers.values());}
+  activityState(w:Worker){return this.unavailable(w)?{kind:'disconnected',label:this.liveFeed?'Observer disconnected':'Live feed disconnected',color:'#f2c879'}:visualState(w,this.workers.values());}
   taskText(w:Worker){return taskLabel(w);}
   meetingMember(id:string){return this.meetingPositions.has(id);}
   isCoffee(w:Worker,now:number){return this.preferences.ambience&&this.preferences.motion&&w.act==='idle'&&!w.needsHuman&&!this.meetingPositions.has(w.id)&&!this.visits.has(w.id)&&now-w.actSince>15000&&(Math.floor(now/1000)+w.seed%73)%73<5;}
@@ -214,6 +219,7 @@ export class Crew {
 
   clear() {
     this.workers.clear();
+    this.handoffs.clear();
     this.meetingPositions.clear();this.visits.clear();this.completed.clear();this.pendingCheers.clear();
     this.layout.clear();
     this.offline.clear();
@@ -224,6 +230,8 @@ export class Crew {
 
   load(s: Snapshot) {
     this.clear();
+    this.liveFeed=true;
+    this.handoffs.seed(s);
     const now = this.now();
     const byId = new Map(s.workers.map(w => [w.workerId, w]));
     const depth = (w: WorkerState) => {
@@ -270,7 +278,7 @@ export class Crew {
         if (age >= 0 && age < 30) this.board.spark[29 - Math.floor(age)]++;
       }
       if (e.kind === "shout" && e.summary && t0 - Date.parse(e.ts) < SHOUT_MS) this.board.shouts.push({ text: e.summary, agent: e.agent, t0: now - (t0 - Date.parse(e.ts)) });
-      if (e.kind === "error" && e.host && OFFLINE.test(e.summary ?? "")) this.markOffline(e.host, e.agent, true);
+      if (e.kind === "error" && e.host && OFFLINE.test(e.summary ?? "")&&!s.hosts?.some(h=>h.host.id===e.host!.id)) this.markOffline(e.host, e.agent, true);
     }
   }
 
@@ -381,14 +389,18 @@ export class Crew {
   }
 
   apply(e: OfficeEvent) {
+    if(e.kind==='host_status'){
+      if(e.hostStatus){this.markOffline(e.hostStatus.host,e.agent,!e.hostStatus.online);if(!e.hostStatus.online)this.handoffs.clear();}return;
+    }
     if(e.kind === "meeting")return;
+    this.handoffs.observe(e,this.workers,this.now(),this.preferences.motion&&this.preferences.handoffs&&this.liveFeed,w=>this.unavailable(w));
     const now = this.now();
     // a remote that dropped: dim its pod, never spawn a worker for the notice
     if (e.host && isRemote(e.host)) {
       if (e.kind === "error" && OFFLINE.test(e.summary ?? "")) {
         this.markOffline(e.host, e.agent, true);
         if (!this.workers.has(e.workerId)) return;
-      } else this.markOffline(e.host, e.agent, false);
+      } else if(!["session_end","subagent_end","idle"].includes(e.kind)) this.markOffline(e.host, e.agent, false);
     }
     if (e.kind === "session_start" && e.replaces && e.replaces !== e.workerId) this.takeOver(e.replaces, e.workerId, now);
     let w = this.workers.get(e.workerId);
@@ -658,6 +670,7 @@ export class Crew {
   update(dt: number) {
     const now = this.now();
     const s = dt / 1000;
+    if(!this.liveFeed)return;
     if (now - this.bucketAt > 2000) {
       this.bucketAt = now;
       this.board.spark.push(this.bucket);
@@ -687,6 +700,7 @@ export class Crew {
     for (const w of [...this.workers.values()]) {
       if (!w.leaving) { count++; by[w.agent] = (by[w.agent] ?? 0) + 1; }
       if (!w.leaving && w.needsHuman && !w.intern) waiting++;
+      if(this.unavailable(w)&&!w.leaving)continue;
       if (w.path.length && !w.walking && !w.leaving && el.open > 0.7) w.walking = true;
       if (w.alpha < 1 && !w.gone && !w.remote && (el.open > 0.6 || !w.path.length)) w.alpha = Math.min(1, w.alpha + s * 3);
       if (w.tp && now - w.tp.t0 >= TP_MS) {
@@ -843,6 +857,7 @@ export class Crew {
   /* --------------------------------------------------------------- draw */
 
   screenOf(w: Worker | undefined, now: number): P.Screen {
+    if(w&&this.unavailable(w))return "off";
     if (!w) return "off";
     if (w.tp) return w.tp.out ? (now - w.tp.t0 > 200 ? "off" : "boot") : now - w.tp.t0 < TP_MS * 0.5 ? "off" : "boot";
     if (w.walking && !w.seated) return now - w.bornAt < 400 ? "off" : "boot";
@@ -860,6 +875,7 @@ export class Crew {
   }
 
   pose(w: Worker, now: number): { pose: Pose; dir: Dir; frame: number } {
+    if(this.unavailable(w))return {pose:w.seated?"sit":"stand",dir:w.dir,frame:0};
     const meeting=this.meetingPositions.get(w.id);
     if(meeting&&!w.leaving&&!w.walking){if(w.show?.kind==='cheer')return {pose:'cheer',dir:meeting.dir,frame:0};const speaking=(w.act==='reply'||now-w.shoutAt<5000)&&now-w.lastEventAt<7000;return {pose:speaking?'point':'sit',dir:meeting.dir,frame:0};}
     const sh = w.show;
@@ -1024,9 +1040,10 @@ export class Crew {
     const screenAgent = occ?.agent ?? agent;
     P.monitorFrame(g, mx, my, key);
     P.drawScreen(g, mx + 2, my + 2, P.SCR_W, P.SCR_H, scr, screenAgent, now, occ?.seed ?? 0);
-    const typing = !!occ && seated && (occ.act === "edit" || occ.act === "bash" || occ.act === "other" || occ.act === "reply");
+    const typing = !!occ && !this.unavailable(occ) && seated && (occ.act === "edit" || occ.act === "bash" || occ.act === "other" || occ.act === "reply");
     P.keyboard(g, x + 9, y + 5, key, typing, now, occ?.seed ?? 0);
     if (occ && !occ.leaving) {
+      if(this.preferences.personalDesks)drawPersonalDesk(g,occ,x,y);
       P.trinket(g, occ.trinkets[0], x + 2, y + 8, occ.seed, now);
       P.trinket(g, occ.trinkets[1], x + 30, y + 8, occ.seed + 1, now);
       if (occ.stickies) P.stickies(g, mx, my, occ.stickies);
@@ -1134,7 +1151,7 @@ export class Crew {
     const x = Math.round(w.x) - (SPRITE_W >> 1);
     const y = Math.round(w.y) - SPRITE_FOOT;
     let alpha = clamp(w.alpha, 0, 1);
-    if (isRemote(w.host) && this.offline.has(w.host.id)) alpha *= 0.55;
+    if (this.unavailable(w)) alpha *= 0.55;
     // materialising: the sprite builds up from the feet (or dissolves from the head)
     let clipTop = -1;
     if (w.tp) {
@@ -1180,7 +1197,7 @@ export class Crew {
     g.drawImage(spr.c, x, y);
     if (box && dir !== "up") P.box(g, Math.round(w.x) - 5, Math.round(w.y) - 13);
     // remote workers are a hologram away: now and then a scanline glitch rolls over them
-    if (w.remote && !w.tp) {
+    if (w.remote && !w.tp && !this.unavailable(w)) {
       const ph = (now + w.seed * 13) % 5200;
       if (ph < 140) {
         const gy = y + 2 + Math.floor((ph / 140) * (SPRITE_FOOT - 2));
@@ -1210,7 +1227,7 @@ export class Crew {
   }
 
   private drawBeam(g: CanvasRenderingContext2D, w: Worker, now: number) {
-    if (!w.tp) return;
+    if (!w.tp || this.unavailable(w)) return;
     const p = clamp((now - w.tp.t0) / TP_MS, 0, 1);
     if (p <= 0) return;
     P.beam(g, Math.round(w.x), Math.round(w.y), p, this.hostInk(w), now);
@@ -1218,6 +1235,7 @@ export class Crew {
 
   /** Bubbles and icons above the worker's head and monitor. */
   private drawOverhead(g: CanvasRenderingContext2D, w: Worker, now: number) {
+    if(this.unavailable(w))return;
     if (w.alpha < 0.9 || w.leaving || w.tp) return;
     g.globalAlpha = clamp((now - w.actSince) / 220, 0.25, 1);
     this.overhead(g, w, now);

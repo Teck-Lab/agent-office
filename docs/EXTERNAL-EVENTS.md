@@ -160,3 +160,36 @@ visuals, not changes to agent state.
 
 Team present means linked sessions remain visible; it is not proof that they are
 currently executing a turn. Execution is shown from their individual activity.
+
+
+## Handoffs, seasons and observer health
+
+Appearance adds northern/southern calendar seasons or a fixed spring, summer,
+autumn or winter preview. Window-clipped trees, blossoms, leaves and snow are
+decorative. Still scenery remains with reduced motion. Personal desk accents,
+short role/identity plates and pixel pictures are stable per session across
+reconnects and desk moves; unrelated sessions are not treated as the same person.
+Handoffs and personal desks have separate browser-local toggles.
+
+Cosmetic handoffs follow observed assignments, native helper starts/ends and
+native goal completion. A unique coordinator is resolved by exact host/project/
+Run; ambiguous ownership is skipped. Helper end does not imply success; an
+ordinary reply does not imply delivery to a coordinator. Reconnect snapshots
+seed the replay guard without replaying transfers. Buffers are bounded and no
+control operation is sent.
+
+Browser feed loss freezes/dims last-known workers, blanks their screens and
+shows a banner until a fresh snapshot arrives. Independently, the external
+observer ingest tracks valid authenticated source packets. Over 60 seconds
+without a packet emits a server-owned host_status event with hostStatus and
+records the state in Snapshot.hosts. This means observer connectivity is lost,
+not that the sandbox is stopped. Idle sessions with heartbeats stay online.
+Existing stale-session cleanup still applies; source health stays offline until
+a valid packet arrives. Repeated heartbeats do not produce activity or status
+spam. Producers cannot submit host_status or impersonate another source's health.
+Source-scoped snapshots filter health records as well as workers and meetings.
+
+Validation: full isolated Linux suite 553 passed, 2 skipped; final focused suite
+73 passed including renderer bounds/clipping; plugin suite 283 passed. Production
+build, typecheck, served asset hash and live observer status verified. No visual
+browser inspection was performed.

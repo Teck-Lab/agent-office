@@ -21,6 +21,7 @@ const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v ===
 export function createExternalIngest(configPath: string, state: OfficeState, options: {
   now?:()=>number; schedule?:typeof setInterval; cancel?:typeof clearInterval;
 } = {}) {
+  const sources = new Map<string,{host:Host;at:number;online:boolean}>();
   const seen = new Map<string, number>();
   const active = new Map<string, { at: number; event: RawEvent }>();
   // Older loaded OMP observers heartbeat warm/finished helpers indefinitely.
@@ -31,6 +32,7 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
   const protectedWaits = new Set(['Awaiting approval','Awaiting helper work','Awaiting continuation']);
   const sweep = () => {
     const time = now();
+    for(const source of sources.values())if(source.online&&time-source.at>60_000){source.online=false;state.connection(source.host,false);}
     for (const [id, worker] of active) if (time - worker.at > 60_000) {
       state.ingest({ ...worker.event, ts: new Date(time).toISOString(), kind: worker.event.parentId ? 'subagent_end' : 'session_end' });
       active.delete(id);
@@ -127,6 +129,10 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
           ...(value.tokenTotal !== undefined ? { tokenTotal: Number(value.tokenTotal) } : {}),
         } });
       }
+      // Only a fully validated, authenticated packet proves observer liveness.
+      if(!sources.has(sourceId)&&sources.size>=1024)sources.delete(sources.keys().next().value!);
+      sources.set(sourceId,{host:source.host,at:now(),online:true});
+      state.connection(source.host,true);
       sweep();
       for (const { id, event } of pending) {
         if (seen.has(id)) continue;
@@ -159,6 +165,7 @@ export function createExternalIngest(configPath: string, state: OfficeState, opt
       const current = packet.wantSnapshot === true ? state.snapshot() : undefined;
       const snapshot = current ? { version: 1, startedAt: current.startedAt, demo: false,
         workers: current.workers.filter(w => w.host?.kind === 'docker-sandbox' && w.host.id === sourceId),
+        hosts: current.hosts?.filter(h=>h.host.id===sourceId),
         meetings: current.meetings?.filter(m=>m.sourceId===sourceId),
         recent: current.recent.filter(e => e.host?.kind === 'docker-sandbox' && e.host.id === sourceId).slice(-100) } : undefined;
       res.writeHead(202, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });

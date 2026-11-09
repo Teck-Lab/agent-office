@@ -1,3 +1,4 @@
+import {seasonAt,drawSeason} from './office-details.ts';
 /*
  * What you see through the windows: a banded sky that follows the viewer's
  * local clock (night, dawn, day, dusk), sun and moon, twinkling stars, drifting
@@ -179,7 +180,7 @@ export class Sky {
   flash = 0;
   private nextBolt = 0;
 
-  draw(g: CanvasRenderingContext2D, wins: { x: number; y: number; w: number; h: number }[], room: { x: number; w: number }, top: number, height: number, sky0: SkyState, time: number, pan: number, rain = false) {
+  draw(g: CanvasRenderingContext2D, wins: { x: number; y: number; w: number; h: number }[], room: { x: number; w: number }, top: number, height: number, sky0: SkyState, time: number, pan: number, rain = false, season:Parameters<typeof seasonAt>[0]='north') {
     // rain greys the sky and hides sun and stars
     const sky = rain ? { ...sky0, top: mix(sky0.top, C.slate2, 0.35), mid: mix(sky0.mid, C.slate3, 0.4), low: mix(sky0.low, C.slate3, 0.45), stars: 0, sun: sky0.sun * 0.2 } : sky0;
     this.build(room.w, height, sky);
@@ -254,6 +255,7 @@ export class Sky {
       const off = Math.floor(-80 - pan * l.par);
       g.drawImage(l.bm.c, room.x + off, top);
     }
+    drawSeason(g,room,top,height,seasonAt(season),time,sky.dark);
     if (rain) this.rain(g, room, top, height, time);
     else this.flash = 0;
     g.restore();

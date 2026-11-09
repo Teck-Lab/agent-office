@@ -15,6 +15,7 @@ export function createAppearance(change:(prefs:ViewPreferences)=>void){
   form.replaceChildren();
   const selects:[keyof ViewPreferences,string,[string,string][]][]=[
    ['time','Outside',[['local','Local clock'],['day','Daylight'],['dusk','Dusk'],['night','Night']]],
+   ['season','Season',[['north','Northern calendar'],['south','Southern calendar'],['spring','Spring'],['summer','Summer'],['autumn','Autumn'],['winter','Winter']]],
    ['weather','Decorative weather',[['date','Vary by day'],['clear','Clear'],['rain','Rain']]],
    ['theme','Room colours',[['original','Original'],['forest','Forest'],['sunset','Sunset']]],
    ['furniture','Meeting furniture',[['oak','Oak'],['walnut','Walnut']]],
@@ -28,7 +29,7 @@ export function createAppearance(change:(prefs:ViewPreferences)=>void){
    for(const [value,label]of options)input.append(h('option',{text:label,attrs:{value}}));input.value=String(prefs[key]);
    input.addEventListener('change',()=>{prefs=cleanView({...prefs,[key]:input.value});save();});form.append(h('label',null,h('span',{text:title}),input));
   }
-  for(const [key,title]of [['motion','Animated movement'],['ambience','Ambient life and coffee breaks'],['links','Team colours and relationship lines'],['celebrations','Completion celebrations']]as const){
+  for(const [key,title]of [['handoffs','Observed assignment and helper handoffs'],['personalDesks','Personal desk details'],['motion','Animated movement'],['ambience','Ambient life and coffee breaks'],['links','Team colours and relationship lines'],['celebrations','Completion celebrations']]as const){
    const input=h('input',{attrs:{type:'checkbox'}});input.checked=prefs[key];input.addEventListener('change',()=>{prefs={...prefs,[key]:input.checked};save();});form.append(h('label',null,h('span',{text:title}),input));
   }
  }

@@ -17,6 +17,7 @@ export interface OfficeScene {
   getMode(): RenderMode;
   /** CRT scanlines + bloom overlay. */
   setCrt(on: boolean): void;
+  setConnection?(state:"connecting"|"live"|"retrying"|"offline"):void;
   setAppearance?(prefs:import('./scene/presentation.ts').ViewPreferences):void;
   setMeetingSelection?(key:string):void;
   setWhiteboard?(summary: import("./scene/whiteboard.ts").WhiteboardSummary|null): void;

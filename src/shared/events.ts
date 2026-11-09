@@ -86,6 +86,7 @@ export type ToolCategory =
   | "other";
 
 export type EventKind =
+  | "host_status"    // server-observed producer connection, never worker activity
   | "session_start"  // first sighting of a session (also sent on backfill)
   | "prompt"         // the human sent a message
   | "thinking"       // model is reasoning / generating
@@ -123,6 +124,7 @@ export interface OfficeEvent {
   project: string;
   /** Set for workers in a sandbox or on another machine. */
   host?: Host;
+  hostStatus?: HostStatus;
   /** Rendering placement; the real execution host is retained above. */
   placement?: Placement;
   /** null clears a previously bound assignment after revocation/rebinding. */

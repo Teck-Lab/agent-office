@@ -387,7 +387,7 @@ export function drawLabels(g: CanvasRenderingContext2D, crew: Crew, cam: Camera,
     // A waiting worker always gets its chip: it is the one thing on screen the viewer has to act on.
     const wantChip = !w.leaving && !flipping && (persistent||vip||w.needsHuman) && (w.needsHuman || ((w.summary||persistent) && (vip || (!folded(w) && ((fresh && (!crowded || spent < budget * 0.7)) || zoomedIn)))));
     if (wantChip && (vip || w.needsHuman || spent < budget)) {
-      const raw = w.needsHuman ? waitText(w) : visual.label+(crew.preferences.labels==='tasks'&&task?' / '+task:'');
+      const raw = crew.unavailable(w) ? visual.label : w.needsHuman ? waitText(w) : visual.label+(crew.preferences.labels==='tasks'&&task?' / '+task:'');
       const s = fit(FONT(), raw, (sel ? 44 : 26) * 6);
       const cw = textW(s, fs) + pad * 2 + 4 * fs;
       const cy = Math.round(fy + 6 * z);

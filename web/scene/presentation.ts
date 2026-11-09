@@ -6,15 +6,17 @@ export interface ViewPreferences {
   theme:'original'|'forest'|'sunset'; furniture:'oak'|'walnut';
   layout:'horizontal'|'vertical'; characters:'original'|'headphones'|'caps';
   decor:'standard'|'plants'|'minimal'; labels:'tasks'|'status'|'quiet';
+  season:'north'|'south'|'spring'|'summer'|'autumn'|'winter';
+  handoffs:boolean; personalDesks:boolean;
   motion:boolean; ambience:boolean; links:boolean; celebrations:boolean;
 }
-export const DEFAULT_VIEW:ViewPreferences={time:'local',weather:'date',theme:'original',furniture:'oak',layout:'horizontal',characters:'original',decor:'standard',labels:'tasks',motion:true,ambience:true,links:true,celebrations:true};
+export const DEFAULT_VIEW:ViewPreferences={time:'local',weather:'date',season:'north',handoffs:true,personalDesks:true,theme:'original',furniture:'oak',layout:'horizontal',characters:'original',decor:'standard',labels:'tasks',motion:true,ambience:true,links:true,celebrations:true};
 export function cleanView(input:unknown):ViewPreferences {
  const out={...DEFAULT_VIEW};if(!input||typeof input!=='object')return out;
  const raw=input as Record<string,unknown>;
- const enums={time:['local','day','dusk','night'],weather:['date','clear','rain'],theme:['original','forest','sunset'],furniture:['oak','walnut'],layout:['horizontal','vertical'],characters:['original','headphones','caps'],decor:['standard','plants','minimal'],labels:['tasks','status','quiet']};
+ const enums={season:['north','south','spring','summer','autumn','winter'],time:['local','day','dusk','night'],weather:['date','clear','rain'],theme:['original','forest','sunset'],furniture:['oak','walnut'],layout:['horizontal','vertical'],characters:['original','headphones','caps'],decor:['standard','plants','minimal'],labels:['tasks','status','quiet']};
  for(const [key,values]of Object.entries(enums))if(values.includes(raw[key] as string))Object.assign(out,{[key]:raw[key]});
- for(const key of ['motion','ambience','links','celebrations']as const)if(typeof raw[key]==='boolean')out[key]=raw[key];
+ for(const key of ['motion','ambience','links','celebrations','handoffs','personalDesks']as const)if(typeof raw[key]==='boolean')out[key]=raw[key];
  return out;
 }
 export const viewHour=(prefs:ViewPreferences,date=new Date())=>prefs.time==='local'?date.getHours()+date.getMinutes()/60+date.getSeconds()/3600:prefs.time==='day'?12:prefs.time==='dusk'?18:23;

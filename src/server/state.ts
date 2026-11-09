@@ -100,6 +100,7 @@ interface Worker {
 }
 
 export class OfficeState {
+  private hostStates = new Map<string, import("../shared/events.ts").HostStatus>();
   private readonly meetings = new Meetings();
   readonly demo: boolean;
   readonly startedAt: string;
@@ -371,6 +372,15 @@ export class OfficeState {
     for (const id of ids) { const w = this.workers.get(id); if (w && w.removeAt === undefined) w.lastActive = this.now(); }
   }
 
+  /** Observer health is independent of worker execution; callers supply authenticated host identity. */
+  connection(host: import('../shared/events.ts').Host, online: boolean): void {
+    if (this.hostStates.get(host.id)?.online === online) return;
+    if (!this.hostStates.has(host.id) && this.hostStates.size >= 1024) this.hostStates.delete(this.hostStates.keys().next().value!);
+    const hostStatus: import('../shared/events.ts').HostStatus = {host,online,status:online?'online':'offline',...(!online?{error:'Observer heartbeat timed out'}:{})};
+    this.hostStates.set(host.id,hostStatus);
+    this.publish({kind:'host_status',ts:new Date(this.now()).toISOString(),agent:'omp',workerId:'host:'+host.id,project:host.name,host,hostStatus});
+  }
+
   snapshot(): Snapshot {
     return {
       version: 1,
@@ -379,6 +389,7 @@ export class OfficeState {
       workers: [...this.workers.values()].filter(w=>w.removeAt===undefined).map((w) => ({ ...w.state })),
       meetings: this.meetings.snapshot(),
       recent: this.recent(),
+      ...(this.hostStates.size?{hosts:[...this.hostStates.values()]}:{}),
     };
   }
 
@@ -394,6 +405,7 @@ export class OfficeState {
   /** Empty the office (the demo starting over for a new viewer). Sequence numbers keep counting. */
   reset(): void {
     this.workers.clear();
+    this.hostStates.clear();
     this.meetings.clear();
     this.ring.fill(undefined);
     this.ringHead = this.ringSize = 0;

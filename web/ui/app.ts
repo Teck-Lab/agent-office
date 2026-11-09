@@ -710,7 +710,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       if(hoverId)updateHover(hoverId);
       topbar.setDemo(!!s.demo);
       topbar.update(model, false);
-      feed.reset(s.recent, model);
+      feed.reset(s.recent.filter(e=>e.kind!=="host_status"), model);
       toasts.clear();
       refreshEmpty();
       if (selected) {
@@ -725,6 +725,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
       if(hoverId)updateHover(change.renamed?.from===hoverId?change.renamed.to:hoverId);
       updateBoard();
       safe(() => scene.apply(e));
+      if(e.kind==="host_status"){topbar.update(model,true);return;}
       if (panel.isOpen()) panel.workerEvent(e);
       if (change.renamed) {
         // the replacing worker takes over in place: selection, feed rows and panel follow it
@@ -764,6 +765,7 @@ export function mountChrome(root: HTMLElement, scene: OfficeScene): Chrome {
     },
     connection(state, retryInMs) {
       connState = state;
+      scene.setConnection?.(state);
       conn.set(state, retryInMs);
       topbar.setConnected(state === "live");
       refreshEmpty();
