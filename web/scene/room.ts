@@ -12,6 +12,7 @@
  * ground, which is what the ASCII pass samples.
  */
 import {drawWhiteboard,type WhiteboardSummary} from './whiteboard.ts';
+import {glassPartition,glassRail} from './partitions.ts';
 import {meetingRoom,withMeetingBay} from './meeting-room.ts';
 import type { AgentKind } from "../../src/shared/events.ts";
 import { HOST_BRAND } from "../../src/shared/events.ts";
@@ -342,23 +343,10 @@ function buildWing(g: CanvasRenderingContext2D, p: RoomPlan) {
   if (!below) {
     drawCloudWindowWall(g,wg,p.windows);
     // the glass partition between the office and the wing
-    const px = X0 - 12;
-    r(g, px, 0, 12, Y1, C.steel2);
-    r(g, px + 1, 0, 1, Y1, C.steel4);
-    r(g, px + 10, 0, 1, Y1, C.steel1);
-    r(g, px + 3, WALL_H, 6, Y1 - WALL_H, mix(C.blue2, C.steel2, 0.35));
-    g.fillStyle = rgba(C.cyan4, 0.18);
-    for (let y = WALL_H + 6; y < Y1; y += 22) g.fillRect(px + 4, y, 1, 9);
-    g.fillStyle = rgba(C.white, 0.12);
-    g.fillRect(px + 6, WALL_H, 1, Y1 - WALL_H);
-    // posts
-    for (let y = WALL_H; y < Y1; y += 64) { r(g, px + 2, y, 8, 3, C.steel3); r(g, px + 2, y + 2, 8, 1, C.steel1); }
+    glassPartition(g,X0-12,0,Y1);
   } else {
     // portrait: the wing is a lower deck behind a glass rail
-    r(g, X0, wg.y, wg.w, 14, C.steel1);
-    r(g, X0, wg.y, wg.w, 2, C.steel3);
-    g.fillStyle = rgba(C.cyan3, 0.5);
-    g.fillRect(X0, wg.y + 12, wg.w, 1);
+    glassRail(g,X0,wg.y,wg.w);
   }
   // wing sign: a neon "CLOUD" over the uplink
   const f = FONT();

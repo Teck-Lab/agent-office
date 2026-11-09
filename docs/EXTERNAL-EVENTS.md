@@ -97,8 +97,8 @@ old departure animation, keeping the same native parent and worker identity.
 ## Explicit meeting room
 
 The meeting area is left of the elevator, with the same curtain windows used by
-the cloud area. It has no additional side/front partitions. The table runs
-vertically, with eight office chairs along its two long sides. The native OMP
+the cloud area. Matching steel/glass side partitions and a shallow front rail
+enclose it, with a doorway toward the office. The table runs horizontally, with eight office chairs along its two long sides. The native OMP
 goal/task whiteboard is integrated into the existing TV: goal, current task,
 progress and counters fit the screen, while announcements retain their full-screen
 and ticker behavior. Click the TV, meeting area or Meeting room button to open the

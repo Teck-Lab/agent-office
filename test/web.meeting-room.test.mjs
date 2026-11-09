@@ -7,14 +7,24 @@ import {join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const dir=mkdtempSync(join(tmpdir(),'office-meetings-')),file=join(dir,'test.mjs');after(()=>rmSync(dir,{recursive:true,force:true}));
 await build({stdin:{contents:'export * from "./src/shared/meetings.ts";export * from "./web/scene/meeting-room.ts";export * from "./web/scene/whiteboard.ts";export {tvScreen} from "./web/scene/room.ts";export * from "./web/scene/workers.ts";',resolveDir:fileURLToPath(new URL('..',import.meta.url)),loader:'ts'},bundle:true,platform:'node',format:'esm',outfile:file,logLevel:'error',loader:{'.svg':'text'}});
-const {Meetings,cleanMeeting,meetingRoom,meetingSeats,meetingTable,drawWhiteboard,tvScreen,Crew}=await import(pathToFileURL(file));
-test('vertical meeting table and eight inward-facing seats fit the smallest office floor',()=>{
+const {Meetings,cleanMeeting,meetingRoom,meetingSeats,meetingTable,drawMeetingWalls,drawWhiteboard,tvScreen,Crew}=await import(pathToFileURL(file));
+test('horizontal meeting table and eight inward-facing seats fit the smallest office floor',()=>{
  for(const w of [240,330,1000]){const room=meetingRoom({x:0,y:0,w,h:198}),seats=meetingSeats(room),table=meetingTable(room);
-   assert.ok(room.x+room.w<12);assert.ok(room.y+room.h<=198);assert.ok(table.h>table.w*2);
+   assert.ok(room.x+room.w<12);assert.ok(room.y+room.h<=198);assert.ok(table.w>table.h*2);
    assert.ok(table.x>room.x&&table.x+table.w<room.x+room.w&&table.y>=78&&table.y+table.h<room.y+room.h);
-   assert.equal(new Set(seats.map(p=>p.x+':'+p.y)).size,8);assert.equal(new Set(seats.map(p=>p.x)).size,2);
-   assert.ok(seats.every((p,i)=>p.y>78&&p.y+8<room.y+room.h&&(i<4?p.x<table.x&&p.dir==='right':p.x>table.x+table.w&&p.dir==='left')));
+   assert.equal(new Set(seats.map(p=>p.x+':'+p.y)).size,8);assert.equal(new Set(seats.map(p=>p.y)).size,2);
+   assert.ok(seats.every((p,i)=>p.y>78&&p.y+8<room.y+room.h&&(i<4?p.y<table.y&&p.dir==='down':p.y>table.y+table.h&&p.dir==='up')));
  }
+});
+test('meeting walls stay within the floor and leave a clear office-facing doorway',()=>{
+ const room=meetingRoom({x:0,y:0,w:240,h:198}),rects=[];
+ drawMeetingWalls({fillRect:(x,y,w,h)=>rects.push({x,y,w,h})},room);
+ assert.ok(rects.length>10);
+ assert.ok(rects.every(r=>r.x>=room.x&&r.y>=0&&r.x+r.w<=room.x+room.w&&r.y+r.h<=198));
+ const doorway={x:room.x+room.w-12,y:128,w:12,h:32};
+ assert.ok(rects.every(r=>r.x+r.w<=doorway.x||r.x>=doorway.x+doorway.w||r.y+r.h<=doorway.y||r.y>=doorway.y+doorway.h));
+ const table=meetingTable(room);
+ assert.ok(rects.every(r=>r.x+r.w<=table.x||r.x>=table.x+table.w+3||r.y+r.h<=table.y||r.y>=table.y+table.h+4));
 });
 test('meeting limits, host rights and source boundaries are enforced',()=>{
  const m=new Meetings(),ts=new Date().toISOString(),start={action:'start',id:'handoff',title:'Handoff'};
