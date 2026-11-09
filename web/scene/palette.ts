@@ -223,7 +223,7 @@ const slateDesk = {
 };
 
 export const BRAND_ART: Record<AgentKind, BrandArt> = {
-  omp: { main: "#38BDF8", dark: "#0284C7", deep: "#082F49", light: "#7DD3FC", pale: "#E0F2FE", mark: "#FFFFFF", ink: "#082F49", rug: ["#082F49", "#38BDF8", "#0284C7"], pattern: "blocks", ...slateDesk, trim: "#38BDF8", chair: ["#082F49", "#38BDF8"], stool: "#0284C7", kbd: ["#082F49", "#0284C7", "#7DD3FC"], led: "#7DD3FC" },
+  omp: { main: "#38BDF8", dark: "#0284C7", deep: "#082F49", light: "#7DD3FC", pale: "#E0F2FE", mark: "#FFFFFF", ink: "#38BDF8", rug: ["#082F49", "#38BDF8", "#0284C7"], pattern: "blocks", ...slateDesk, trim: "#38BDF8", chair: ["#082F49", "#38BDF8"], stool: "#0284C7", kbd: ["#082F49", "#0284C7", "#7DD3FC"], led: "#7DD3FC" },
   claude: {
     main: C.terra3, dark: C.terra2, deep: C.terra1, light: C.terra4, pale: C.terra5, mark: C.terra5, ink: C.terra3,
     rug: [C.terra2, C.terra4, C.terra1], pattern: "diamond",

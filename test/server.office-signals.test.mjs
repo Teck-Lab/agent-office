@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+import fs from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve, basename } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+const root = fileURLToPath(new URL('..', import.meta.url));
+const temp = fs.mkdtempSync(join(tmpdir(), 'agentoffice-signals-'));
+const bundle = join(temp, 'server.mjs');
+await build({ stdin: { contents: 'export * from "./src/server/http.ts"; export * from "./src/server/state.ts";', resolveDir: root, loader: 'ts' }, bundle: true, platform: 'node', format: 'esm', outfile: bundle, logLevel: 'error' });
+const { startServer, OfficeState } = await import(pathToFileURL(bundle));
+process.on('exit', () => { const target = resolve(temp); if (dirname(target) === resolve(tmpdir()) && basename(target).startsWith('agentoffice-signals-')) fs.rmSync(target, { recursive: true, force: true }); });
+
+test('authenticated Office signals preserve pose and peer snapshots cannot expose another source', async t => {
+  const token = 'a'.repeat(64), sourceId = 'source-one', config = join(temp, 'sources.json');
+  fs.writeFileSync(config, JSON.stringify({ version: 1, sources: { [sourceId]: { token, project: 'Project one', host: { kind: 'docker-sandbox', id: sourceId, name: 'sandbox-one' } } } }));
+  const state = new OfficeState(), server = await startServer({ state, port: 0, externalConfig: config });
+  t.after(() => server.close());
+  const event = (kind, extra = {}) => ({ eventId: crypto.randomUUID(), ts: new Date().toISOString(), agent: 'omp', workerId: 'owner', kind, ...extra });
+  const post = data => fetch(server.url + '/api/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ version: 1, sourceId, events: [], ...data }) });
+  const secret = 'ghp_' + 'a'.repeat(40);
+  const r = await post({ events: [event('session_start'), event('waiting'), event('status', { summary: 'Testing ' + secret, tool: 'debugging' }), event('shout', { summary: 'Acceptance verified' }), event('celebrate'), event('flip', { summary: 'this cache is haunted' })] });
+  assert.equal(r.status, 202);
+  const worker = state.snapshot().workers[0];
+  assert.equal(worker.status, 'waiting');
+  assert.ok(!JSON.stringify(state.snapshot()).includes(secret));
+  assert.ok(state.snapshot().recent.some(e => e.kind === 'flip'));
+  assert.ok(state.snapshot().recent.some(e => e.kind === 'status' && e.tool === '🐛'));
+  state.ingest({ ts: new Date().toISOString(), agent: 'omp', workerId: 'external:source-one:other:owner', kind: 'session_start', project: 'PRIVATE OTHER PROJECT', host: { kind: 'docker-sandbox', id: 'source-one:other', name: 'other' } });
+  const response = await post({ wantSnapshot: true });
+  assert.equal(response.status, 202);
+  const body = await response.json();
+  assert.equal(body.snapshot.workers.length, 1);
+  assert.ok(body.snapshot.workers[0].workerId.startsWith('external:source-one:'));
+  assert.ok(!JSON.stringify(body).includes('PRIVATE OTHER PROJECT'));
+  assert.equal((await post({ wantSnapshot: 'yes' })).status, 400);
+});

@@ -43,7 +43,7 @@ export interface HostSummary {
 
 const HISTORY = 12;
 /** Events an agent sends through MCP alongside its work; they never change what it is doing. */
-const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate"]);
+const SIGNALS = new Set<EventKind>(["status", "shout", "celebrate", "usage"]);
 const OFFLINE = /^remote offline/i;
 const isRemote = (h?: Host): h is Host => !!h && h.kind !== "local";
 
@@ -56,6 +56,7 @@ export function moodOf(e: Pick<OfficeEvent, "tool" | "summary">): string {
 
 export class OfficeModel {
   readonly workers = new Map<string, Worker>();
+  private readonly tokenHighWater = new Map<string, number>();
   toolCalls = 0;
   tokens = 0;
   flips = 0;
@@ -67,6 +68,7 @@ export class OfficeModel {
 
   load(s: Snapshot): void {
     this.workers.clear();
+    this.tokenHighWater.clear();
     this.hostsSeen.clear();
     this.offline.clear();
     this.demo = !!s.demo;
@@ -77,6 +79,7 @@ export class OfficeModel {
     for (const w of this.workers.values()) {
       this.toolCalls += w.toolCalls || 0;
       this.tokens += w.tokens || 0;
+      this.tokenHighWater.set(w.workerId, w.tokens || 0);
     }
     for (const w of this.workers.values()) if (isRemote(w.host)) this.hostsSeen.set(w.host.id, w.host);
     this.flips = 0;
@@ -117,6 +120,9 @@ export class OfficeModel {
     if (e.kind === "session_start" && e.replaces && e.replaces !== e.workerId) {
       const old = this.workers.get(e.replaces);
       if (old) {
+        const oldTotal = this.tokenHighWater.get(e.replaces) ?? old.tokens;
+        this.tokenHighWater.delete(e.replaces);
+        this.tokenHighWater.set(e.workerId, Math.max(this.tokenHighWater.get(e.workerId) ?? 0, oldTotal));
         this.workers.delete(e.replaces);
         if (!this.workers.has(e.workerId)) {
           old.workerId = e.workerId;
@@ -155,7 +161,10 @@ export class OfficeModel {
 
     if (e.kind === "test_fail" || e.kind === "flip") this.flips++;
     if (e.kind === "tool_start") this.toolCalls++;
-    if (e.tokens && e.tokens > 0) this.tokens += e.tokens;
+    const previousTokens = this.tokenHighWater.get(e.workerId) ?? w?.tokens ?? 0;
+    const tokensDelta = e.tokenTotal !== undefined ? Math.max(0, e.tokenTotal - previousTokens) : (e.tokens ?? 0);
+    if (tokensDelta > 0) this.tokens += tokensDelta;
+    if (e.tokenTotal !== undefined || tokensDelta > 0) this.tokenHighWater.set(e.workerId, previousTokens + tokensDelta);
     if (!w) return change;
 
     if (e.project) w.project = e.project;
@@ -190,7 +199,8 @@ export class OfficeModel {
     } else if (e.summary && e.kind !== "tool_end" && !SIGNALS.has(e.kind)) {
       w.summary = e.summary;
     }
-    if (e.tokens && e.tokens > 0) w.tokens += e.tokens;
+    if (e.tokenTotal !== undefined) w.tokens = Math.max(w.tokens, e.tokenTotal);
+    else if (e.tokens && e.tokens > 0) w.tokens += e.tokens;
     push(w, e);
     change.worker = w;
 
@@ -234,7 +244,7 @@ export class OfficeModel {
 }
 
 function push(w: Worker, e: OfficeEvent): void {
-  if (e.kind === "thinking" || e.kind === "reply" || (e.kind === "tool_end" && !e.isError)) return;
+  if (e.kind === "thinking" || e.kind === "reply" || e.kind === "usage" || (e.kind === "tool_end" && !e.isError)) return;
   w.history.push({
     seq: e.seq,
     ts: parseTs(e.ts),

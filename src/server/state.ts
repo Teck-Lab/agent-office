@@ -44,7 +44,7 @@ export const INTERN_GRACE_MS = 6_000;
 const AGENTS = new Set<AgentKind>(["omp", "claude", "commandcode", "codex", "opencode", "droid", "gemini", "qwen", "cursor"]);
 const HOSTS = new Set<HostKind>(["docker-sandbox", "local", "ssh", "daytona", "boat", "railway", "vercel"]);
 const KINDS = new Set<EventKind>([
-  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "waiting",
+  "session_start", "prompt", "thinking", "tool_start", "tool_end", "reply", "usage", "waiting",
   "test_fail", "test_pass", "error", "subagent_start", "subagent_end", "idle", "session_end",
   "status", "shout", "celebrate", "flip",
 ]);
@@ -172,7 +172,7 @@ export class OfficeState {
     }
 
     if (e.kind === "session_end") return this.remove(w, e);
-    if (!e.parentId && e.kind !== "idle") w.heldWait = undefined;
+    if (!e.parentId && e.kind !== "idle" && e.kind !== "usage") w.heldWait = undefined;
     if (!e.parentId && e.kind === "waiting" && this.busyInterns(w, now)) e = this.supervise(w, e.ts, now);
     this.fold(w, e, now);
     const out = this.publish(e);
@@ -423,7 +423,7 @@ export class OfficeState {
         workerId: e.workerId,
         agent: e.agent,
         project: e.project,
-        status: e.kind,
+        status: e.kind === "usage" ? "thinking" : e.kind,
         lastTs: e.ts,
         toolCalls: 0,
         tokens: 0,
@@ -465,6 +465,9 @@ export class OfficeState {
   private fold(w: Worker, e: RawEvent, now: number): void {
     const s = w.state;
     this.merge(w, e);
+    if (e.tokenTotal !== undefined) s.tokens = Math.max(s.tokens, e.tokenTotal);
+    else if (e.tokens) s.tokens += e.tokens;
+    if (e.kind === "usage") { this.touch(w, e.ts, now); return; }
     s.status = e.kind;
     s.lastTs = e.ts;
     if (e.kind === "tool_start") {
@@ -487,7 +490,6 @@ export class OfficeState {
       s.summary = e.summary;
     }
     for (const k of ["tool", "category", "summary"] as const) if (s[k] === undefined) delete s[k];
-    if (e.tokens) s.tokens += e.tokens;
     if (e.kind === "subagent_end") w.removeAt = now + this.graceMs;
     else w.removeAt = undefined;
     if (e.kind !== "idle") this.touch(w, e.ts, now);
@@ -580,6 +582,7 @@ export class OfficeState {
     if (typeof raw.tokens === "number" && Number.isFinite(raw.tokens) && raw.tokens > 0) {
       e.tokens = Math.min(Math.round(raw.tokens), 10_000_000);
     }
+    if (Number.isSafeInteger(raw.tokenTotal) && raw.tokenTotal! >= 0) e.tokenTotal = raw.tokenTotal;
     const role = clean(raw.role, 48);
     if (role) e.role = role;
     if (raw.kind === "session_start") {

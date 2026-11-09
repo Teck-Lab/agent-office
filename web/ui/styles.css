@@ -19,6 +19,7 @@
   --fg-3: #75757b;
   --fg-4: #4c4c53;
 
+  --omp: #38bdf8;
   --claude: #d97757;
   --cc: #f2f2f2;
   --codex: #10a37f;
@@ -175,6 +176,7 @@ button {
   height: 100%;
 }
 
+.logo-omp { color: var(--omp); }
 .logo-claude { color: var(--claude); }
 .logo-commandcode { color: var(--cc); }
 .logo-codex { color: var(--codex); }

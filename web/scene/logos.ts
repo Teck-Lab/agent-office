@@ -106,6 +106,13 @@ export function drawMark(g: CanvasRenderingContext2D, kind: LogoKind, x: number,
 
 /** Hand-pixelled marks for the sizes the room uses (pod signs 9, TV and tags 7, counts 5). */
 const HAND: Partial<Record<LogoKind, Record<number, string[]>>> = {
+  // The official OMP pi silhouette: full bar, two legs, shorter left leg.
+  // Explicit tiny versions keep it legible on the TV, monitors and chair tags.
+  omp: {
+    9: ["#########", "#########", ".##..##..", ".##..##..", ".##..##..", ".##..##..", ".##..##..", ".....##..", ".....##.."],
+    7: ["#######", ".##.##.", ".##.##.", ".##.##.", ".##.##.", "....##.", "....##."],
+    5: ["#####", ".#.#.", ".#.#.", ".#.#.", "...#."],
+  },
   claude: {
     9: ["....#....", ".#..#..#.", "..#.#.#..", "...###...", "####.####", "...###...", "..#.#.#..", ".#..#..#.", "....#...."],
     7: ["...#...", ".#.#.#.", "..###..", "###.###", "..###..", ".#.#.#.", "...#..."],

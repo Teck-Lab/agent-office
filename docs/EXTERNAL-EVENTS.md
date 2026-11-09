@@ -6,7 +6,7 @@ Start the normal browser/server with --external-only --external-config /private/
 
 The private configuration is {"version":1,"sources":{"SANDBOX-ID":{"token":"64 lowercase hex characters","project":"Teck.Monorepo","host":{"kind":"docker-sandbox","id":"SANDBOX-ID","name":"sandbox-name"}}}}. Replace the example token with a generated credential. Configuration is reread for every request, so removing a source or rotating its token takes effect immediately. Never commit this file.
 
-POST /api/ingest accepts Authorization: Bearer TOKEN and application/json. The version-1 body contains sourceId, events (at most 100) and optional heartbeat (worker IDs). Each event has eventId (stable across retries), ts (ISO timestamp within two minutes), agent, workerId, kind, and optional parentId, tool, category, summary, model, role, isError. Agents include omp. Event kinds follow src/shared/events.ts; self-authored status/shout/control events are excluded from this ingestion route.
+POST /api/ingest accepts Authorization: Bearer TOKEN and application/json. The version-1 body contains sourceId, events (at most 100) and optional heartbeat (worker IDs). Each event has eventId (stable across retries), ts (ISO timestamp within two minutes), agent, workerId, kind, and optional parentId, tool, category, summary, model, role, isError. Agents include omp. Event kinds follow src/shared/events.ts; sanitized native Office status, shout, celebrate and flip signals are accepted for observed workers. Control events are excluded.
 
 The server owns project and host metadata and prefixes worker/parent identifiers per source. Unknown fields (including prompts, arguments, results and cwd) are discarded. Use metadata-only summaries. Duplicate event IDs are ignored within the bounded retry window. Heartbeats preserve an existing observed state without adding tool calls. A producer missing for 60 seconds is retired. The 202 response includes missing worker IDs: after a server restart, replay a session-start and the latest observed state for those workers. IDs are stable across reconnects; a new backend has a fresh activity history.
 
@@ -23,3 +23,30 @@ The server derives rendering `placement`: coordinators and their native task hel
 Late role binding moves an existing native family between rooms without replacing worker IDs or duplicating desks. Nested task helpers share the owning main's bench. Selecting a worker highlights native family members and other dispatched workers with the same confirmed Run ID. The inspector shows the role and lifecycle IDs alongside the real host.
 
 Native task subagents have documented lifecycle events and are represented independently. Built-in advisors do not expose an equivalent public start/end lifecycle in the tested OMP version; advisory work remains attributed to its owning session rather than inventing advisor lifetimes.
+
+## Native Office MCP signals and usage
+
+The authenticated event stream also accepts `status`, `shout`, `celebrate`,
+`flip` and `usage`. Signals apply to an already observed worker and preserve
+its activity pose. A status uses `summary` for its public status text and `tool`
+for an optional emoji mood. Signal summaries are scrubbed again on ingestion.
+
+For OMP, the sandbox adapter runs Agent Office's native stdio MCP implementation.
+The native handlers own the five tool definitions, text scrubbing, mood parsing
+and cooldowns. Successful calls return an intentional public structured signal;
+the OMP observer associates that signal with the actual calling session/helper
+and forwards it over this authenticated stream. Arbitrary prompts, tool arguments
+and tool output are not used as signal data.
+
+`tokens` remains an additive per-event delta for existing producers. New OMP
+producers use nonnegative safe-integer `tokenTotal`, a cumulative total of that
+agent's own finalized assistant usage. A `usage` event updates counters without
+changing activity. Resending the same or a lower total does not add tokens.
+Attach the latest total to lifecycle/reconnect snapshots too. Parent/helper
+ledgers stay separate; parent task-result aggregates are excluded.
+
+An authenticated batch can set `wantSnapshot: true` with `events: []` to obtain
+a `snapshot` alongside its ordinary receipt. This supports `office_peers` through
+the existing tunnel. It contains only workers and recent events whose server-owned
+Docker Sandbox host ID exactly matches the authenticated source, and exposes no
+control settings or other projects. Snapshot reads do not fabricate activity.

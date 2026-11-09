@@ -89,6 +89,7 @@ export type EventKind =
   | "tool_start"     // a tool call was issued
   | "tool_end"       // its result came back (isError set if it failed)
   | "reply"          // assistant text addressed to the human
+  | "usage"          // cumulative usage metadata; does not change the worker's pose
   | "waiting"        // turn finished, agent is waiting on the human
   | "test_fail"      // a test command exited non-zero  -> table flip
   | "test_pass"      // a test command passed           -> celebration
@@ -132,6 +133,8 @@ export interface OfficeEvent {
   isError?: boolean;
   /** Tokens this line reported (input + output), when the transcript has it. */
   tokens?: number;
+  /** Monotonic own-session token total. Replays/resumes take max rather than adding. */
+  tokenTotal?: number;
   /** Subagent role / description, e.g. "Explore", "general-purpose". */
   role?: string;
   /**

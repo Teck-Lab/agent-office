@@ -273,6 +273,21 @@ test("OfficeEvent.replaces moves a worker, its history and its interns to the ne
   assert.equal(m.workers.size, 2);
 });
 
+test("cumulative own usage updates inspector totals without changing pose, duplicating helpers or history",()=>{
+  const model=new OfficeModel();model.load({version:1,startedAt:'',demo:false,workers:[],recent:[]});
+  let seq=0;const emit=(workerId,kind,extra={})=>model.apply({seq:++seq,ts:new Date().toISOString(),agent:'omp',project:'test',workerId,kind,...extra});
+  emit('main','session_start');emit('main','waiting');emit('helper','subagent_start',{parentId:'main'});
+  const history=model.get('main').history.length;
+  emit('main','usage',{tokenTotal:20_000_000});emit('main','usage',{tokenTotal:20_000_000});emit('helper','usage',{parentId:'main',tokenTotal:350});
+  emit('main','usage',{tokenTotal:19_000_000});
+  assert.equal(model.get('main').tokens,20_000_000);assert.equal(model.get('main').status,'waiting');assert.equal(model.get('main').history.length,history);
+  assert.equal(model.get('helper').tokens,350);assert.equal(model.tokens,20_000_350);assert.equal(model.toolCalls,0);
+  emit('main','usage',{tokens:7});assert.equal(model.tokens,20_000_357);
+  assert.equal(model.get('main').tokens,20_000_007);
+  emit('main','session_end');emit('main','session_start');emit('main','usage',{tokenTotal:20_000_007});
+  assert.equal(model.get('main').tokens,20_000_007);assert.equal(model.tokens,20_000_357,'a resumed worker restores its own counter without adding the whole session again');
+});
+
 test("control store: sessions arrive by event and are found by their (renamed) worker", () => {
   const store = new ControlStore();
   store.state = "enabled";

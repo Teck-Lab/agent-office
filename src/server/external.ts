@@ -4,9 +4,12 @@ import { readFileSync, lstatSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { cleanOrchestration, type Host, type RawEvent } from '../shared/events.ts';
 import type { OfficeState } from './state.ts';
+import { scrubText } from '../ingest/redact.ts';
+import { parseMood } from '../mcp/tools.ts';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9:_.-]{0,119}$/;
-const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','error','idle','test_pass','test_fail']);
+const kinds = new Set(['session_start','session_end','subagent_start','subagent_end','prompt','thinking','tool_start','tool_end','waiting','reply','usage','error','idle','test_pass','test_fail','status','shout','celebrate','flip']);
+const signals = new Set(['status','shout','celebrate','flip']);
 const categories = new Set(['read','edit','bash','search','web','agent','todo','mcp','other']);
 const agents = new Set(['omp','claude','codex','commandcode','opencode','droid','gemini','qwen','cursor']);
 const label = (v: unknown, limit = 64) => typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f]/g, '').slice(0, limit) : undefined;
@@ -66,6 +69,7 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
       const provided = req.headers.authorization?.replace(/^Bearer /, '') ?? '';
       if (!source || !/^[a-f0-9]{64}$/.test(provided) || !timingSafeEqual(Buffer.from(provided), Buffer.from(source.token))) return reply(res, 401, 'Invalid credential');
       if (packet.version !== 1 || !Array.isArray(packet.events) || packet.events.length > 100 ||
+          (packet.wantSnapshot !== undefined && typeof packet.wantSnapshot !== 'boolean') ||
           (packet.heartbeat !== undefined && (!Array.isArray(packet.heartbeat) || packet.heartbeat.length > 256 || packet.heartbeat.some(id => typeof id !== 'string' || !ID.test(id))))) return reply(res, 400, 'Invalid batch');
       const pending: { id: string; event: RawEvent }[] = [];
       for (const value of packet.events) {
@@ -74,7 +78,9 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
             (value.parentId !== undefined && (typeof value.parentId !== 'string' || !ID.test(value.parentId) || value.parentId === value.workerId)) ||
             typeof value.kind !== 'string' || !kinds.has(value.kind) || typeof value.agent !== 'string' || !agents.has(value.agent) ||
             typeof value.ts !== 'string' || !Number.isFinite(Date.parse(value.ts)) || Math.abs(now() - Date.parse(value.ts)) > 120_000 ||
-            (value.category !== undefined && (typeof value.category !== 'string' || !categories.has(value.category)))) return reply(res, 400, 'Invalid event');
+            (value.category !== undefined && (typeof value.category !== 'string' || !categories.has(value.category))) ||
+            (value.tokens !== undefined && (!Number.isSafeInteger(value.tokens) || Number(value.tokens) < 0 || Number(value.tokens) > 10_000_000)) ||
+            (value.tokenTotal !== undefined && (!Number.isSafeInteger(value.tokenTotal) || Number(value.tokenTotal) < 0))) return reply(res, 400, 'Invalid event');
         const orchestration = cleanOrchestration(value.orchestration);
         if (value.orchestration !== undefined && value.orchestration !== null && !orchestration) return reply(res, 400, 'Invalid Orca ownership');
         const prefix = `external:${sourceId}:`;
@@ -83,12 +89,14 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
           ...(value.parentId ? { parentId: prefix + value.parentId } : {}), kind: value.kind as RawEvent['kind'],
           project: label(source.project)!, host: { ...source.host, name: label(source.host.name)! },
           orchestration, placement: orchestration?.role === 'coordinator' ? 'office' : 'cloud',
-          ...(value.tool ? { tool: label(value.tool, 48) } : {}),
+          ...(value.tool ? { tool: value.kind === 'status' ? parseMood(value.tool) : label(value.tool, 48) } : {}),
           ...(value.category ? { category: value.category as RawEvent['category'] } : {}),
-          ...(value.summary ? { summary: label(value.summary) } : {}),
+          ...(value.summary ? { summary: signals.has(value.kind) ? scrubText(value.summary) : label(value.summary) } : {}),
           ...(value.model ? { model: label(value.model) } : {}),
           ...(value.role ? { role: label(value.role) } : {}),
           ...(value.isError === true ? { isError: true } : {}),
+          ...(value.tokens !== undefined ? { tokens: Number(value.tokens) } : {}),
+          ...(value.tokenTotal !== undefined ? { tokenTotal: Number(value.tokenTotal) } : {}),
         } });
       }
       sweep();
@@ -107,8 +115,12 @@ export function createExternalIngest(configPath: string, state: OfficeState) {
         if (worker) { worker.at = now(); live.push(key); }
       }
       state.heartbeat(live);
+      const current = packet.wantSnapshot === true ? state.snapshot() : undefined;
+      const snapshot = current ? { version: 1, startedAt: current.startedAt, demo: false,
+        workers: current.workers.filter(w => w.host?.kind === 'docker-sandbox' && w.host.id === sourceId),
+        recent: current.recent.filter(e => e.host?.kind === 'docker-sandbox' && e.host.id === sourceId).slice(-100) } : undefined;
       res.writeHead(202, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ accepted: true, missing: ((packet.heartbeat ?? []) as string[]).filter(id => !active.has(`external:${sourceId}:${id}`)) }));
+      res.end(JSON.stringify({ accepted: true, missing: ((packet.heartbeat ?? []) as string[]).filter(id => !active.has(`external:${sourceId}:${id}`)), ...(snapshot ? { snapshot } : {}) }));
     },
   };
 }

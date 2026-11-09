@@ -65,6 +65,23 @@ test('retry delivery and heartbeats never duplicate tool counts or change activi
   assert.equal(after.lastTs, before.lastTs);
 });
 
+test('external own-session usage is replay-safe, preserves activity and keeps helpers separate',async t=>{
+  const {state,send}=await office(t);
+  await send({events:[event('session_start'),event('tool_start','main',{tool:'read',category:'read'}),event('subagent_start','helper',{parentId:'main'})]});
+  const usage=event('usage','main',{tokenTotal:20_000_000});
+  assert.equal((await send({events:[usage]})).status,202);
+  await send({events:[usage,event('usage','main',{tokenTotal:20_000_000}),event('usage','helper',{parentId:'main',tokenTotal:350})]});
+  let main=state.snapshot().workers.find(w=>w.workerId.endsWith(':main'));
+  assert.equal(main.tokens,20_000_000);assert.equal(main.toolCalls,1);assert.equal(main.status,'tool_start');assert.equal(main.tool,'read');
+  assert.equal(state.snapshot().workers.find(w=>w.workerId.endsWith(':helper')).tokens,350);
+  await send({events:[event('usage','main',{tokenTotal:19_000_000}),event('usage','main',{tokens:7})]});
+  main=state.snapshot().workers.find(w=>w.workerId.endsWith(':main'));assert.equal(main.tokens,20_000_007);
+  for(const tokenTotal of [-1,1.5,'123',null,Number.MAX_SAFE_INTEGER+1]){
+    assert.equal((await send({events:[event('usage','main',{tokenTotal})]})).status,400);
+  }
+  assert.equal(state.snapshot().workers.find(w=>w.workerId.endsWith(':main')).tokens,20_000_007);
+});
+
 test('malformed batches are rejected atomically; revoked credentials stop working', async t => {
   const { state, send, config } = await office(t);
   assert.equal((await send({ events: [event('session_start'), event('invented')] })).status, 400);
